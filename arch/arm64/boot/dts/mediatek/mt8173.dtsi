@@ -48,6 +48,9 @@
 		serial1 = &uart1;
 		serial2 = &uart2;
 		serial3 = &uart3;
+		mmc0 = &mmc0;
+		mmc1 = &mmc1;
+		mmc2 = &mmc2;
 	};
 
 	cluster0_opp: opp-table-0 {
@@ -996,9 +999,9 @@
 			clocks = <&topckgen CLK_TOP_MFG_SEL>,
 				<&topckgen CLK_TOP_MEM_MFG_IN_SEL>,
 				<&topckgen CLK_TOP_AXI_MFG_IN_SEL>;
-			clock-names = "core_clk",
-				"mem_clk",
-				"sys_clk";
+			clock-names = "core",
+				"mem",
+				"sys";
 			interrupts = <GIC_SPI 217 IRQ_TYPE_LEVEL_LOW>;
 			power-domains =	<&spm MT8173_POWER_DOMAIN_MFG>;
 			#cooling-cells = <2>;
