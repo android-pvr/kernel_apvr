@@ -252,7 +252,7 @@ static irqreturn_t pvr_meta_irq_handler(int irq, void *data)
 	if (pvr_dev->fw_dev.booted) {
 		queue_work(pvr_dev->irq_wq, &pvr_dev->fwccb_work);
 		wake_up(&pvr_dev->kccb_rtn_q);
-		queue_work(pvr_dev->irq_wq, &pvr_dev->fence_work);
+		queue_work(pvr_dev->irq_wq, &pvr_dev->context_work);
 		pvr_power_check_idle(pvr_dev);
 	}
 
@@ -617,8 +617,6 @@ pvr_device_init(struct pvr_device *pvr_dev)
 		goto err_device_irq_fini;
 
 	pm_runtime_put_autosuspend(dev);
-
-	pvr_fence_context_init(pvr_dev, &pvr_dev->fence_context, "misc");
 
 	return 0;
 

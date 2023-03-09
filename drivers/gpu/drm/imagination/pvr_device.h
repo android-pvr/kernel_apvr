@@ -6,7 +6,6 @@
 
 #include "pvr_ccb.h"
 #include "pvr_device_info.h"
-#include "pvr_fence.h"
 #include "pvr_fw.h"
 #include "pvr_params.h"
 #include "pvr_rogue_fwif_stream.h"
@@ -168,9 +167,6 @@ struct pvr_device {
 	/** @fwccb_work: Work item for FWCCB processing. */
 	struct work_struct fwccb_work;
 
-	/** @fence_work: Work item for fence processing. */
-	struct work_struct fence_work;
-
 	/** @delayed_idle_work: Delayed work item for idle checking. */
 	struct delayed_work delayed_idle_work;
 
@@ -196,17 +192,6 @@ struct pvr_device {
 	/** @fw_dev: Firmware related data. */
 	struct pvr_fw_device fw_dev;
 
-	/**
-	 * @fence_list_spinlock: Lock protecting accesses to @fence_list and @imported_fence_list.
-	 */
-	spinlock_t fence_list_spinlock;
-
-	/** @fence_list: List of active fences. */
-	struct list_head fence_list;
-
-	/** @imported_fence_list: List of active imported fences. */
-	struct list_head imported_fence_list;
-
 	/** @power_state: Current GPU power state. */
 	enum pvr_power_state power_state;
 
@@ -224,9 +209,6 @@ struct pvr_device {
 
 	/** @stream_musthave_quirks: Bit array of "must-have" quirks for stream commands. */
 	u32 stream_musthave_quirks[PVR_STREAM_TYPE_MAX][PVR_STREAM_EXTHDR_TYPE_MAX];
-
-	/** @fence_context: Fence context for fences not associated with a data master. */
-	struct pvr_fence_context fence_context;
 
 	/**
 	 * @ctx_ids: Array of contexts belonging to this device. Array members
@@ -249,6 +231,22 @@ struct pvr_device {
 	 *            are of type "struct pvr_job *".
 	 */
 	struct xarray job_ids;
+
+	/**
+	 * @active_contexts: Active context list and the lock protecting it.
+	 *
+	 * Used to iterate over in-flight jobs and signal fences for done jobs.
+	 */
+	struct {
+		/** @list: Active context list. */
+		struct list_head list;
+
+		/** @lock: Lock protecting access to the active context list. */
+		spinlock_t lock;
+	} active_contexts;
+
+	/** @context_work: Work item for context processing. */
+	struct work_struct context_work;
 };
 
 /**

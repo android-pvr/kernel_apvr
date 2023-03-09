@@ -73,8 +73,6 @@ pvr_cccb_init(struct pvr_device *pvr_dev, struct pvr_cccb *pvr_cccb,
 	pvr_cccb->write_offset = 0;
 	pvr_cccb->wrap_mask = size - 1;
 
-	pvr_fence_context_init(pvr_dev, &pvr_cccb->pvr_fence_context, name);
-
 	return 0;
 
 err_free_ctrl:
@@ -106,6 +104,72 @@ build_padding_command(void *cmd_ptr, u32 remaining)
 
 	WRITE_ONCE(cmd->cmd_type, ROGUE_FWIF_CCB_CMD_TYPE_PADDING);
 	WRITE_ONCE(cmd->cmd_size, remaining - sizeof(*cmd));
+}
+
+/**
+ * pvr_cccb_check_command_space_locked() - Check if a command sequence fits in the CCCB
+ * @pvr_cccb: Target Client CCB.
+ * @size: Size of the command sequence.
+ *
+ * Caller must hold @pvr_cccb->lock.
+ *
+ * Returns:
+ *  * Zero on success, or
+ *  * -ENOMEM if insufficient space is currently available in the CCCB, or
+ *  * -E2BIG if the command will never fit in the CCCB.
+ */
+static int pvr_cccb_check_command_space_locked(struct pvr_cccb *pvr_cccb, size_t size)
+{
+	struct rogue_fwif_cccb_ctl *ctrl = pvr_cccb->ctrl;
+	u32 read_offset = READ_ONCE(ctrl->read_offset);
+	u32 remaining = pvr_cccb->size - pvr_cccb->write_offset;
+	u32 required_size = size;
+
+	lockdep_assert_held(&pvr_cccb->lock);
+
+	/*
+	 * Always ensure we have enough room for a padding command at the end of
+	 * the CCCB.
+	 */
+	required_size += PADDING_COMMAND_SIZE;
+
+	if (required_size > pvr_cccb->size)
+		return -E2BIG;
+
+	if (remaining < required_size) {
+		/*
+		 * Command would need to wrap, so we need to pad the remainder
+		 * of the CCCB.
+		 */
+		required_size += remaining;
+	}
+
+	if (get_ccb_space(pvr_cccb->write_offset, read_offset, pvr_cccb->size) < required_size)
+		return -ENOMEM;
+
+	return 0;
+}
+
+/**
+ * pvr_cccb_check_command_space_locked() - Check if a command sequence fits in the CCCB
+ * @pvr_cccb: Target Client CCB.
+ * @size: Size of the command sequence.
+ *
+ * Takes the @pvr_cccb->lock and call pvr_cccb_check_command_space_locked().
+ *
+ * Returns:
+ *  * Zero on success, or
+ *  * -ENOMEM if insufficient space is currently available in the CCCB.
+ */
+int pvr_cccb_check_command_space(struct pvr_cccb *pvr_cccb, size_t size)
+{
+	int ret;
+
+	mutex_lock(&pvr_cccb->lock);
+	ret = pvr_cccb_check_command_space_locked(pvr_cccb, size);
+	mutex_unlock(&pvr_cccb->lock);
+
+	return ret;
 }
 
 /**

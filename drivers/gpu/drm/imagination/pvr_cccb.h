@@ -4,7 +4,6 @@
 #ifndef __PVR_CCCB_H__
 #define __PVR_CCCB_H__
 
-#include "pvr_fence.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_fwif_shared.h"
 
@@ -55,9 +54,6 @@ struct pvr_cccb {
 
 	/** @old_write_offset: CCCB write offset, sampled at CCCB lock time. */
 	u32 old_write_offset;
-
-	/** @pvr_fence_context: Fence context for data master represented by this CCCB. */
-	struct pvr_fence_context pvr_fence_context;
 };
 
 int pvr_cccb_init(struct pvr_device *pvr_dev, struct pvr_cccb *cccb,
@@ -73,6 +69,7 @@ int pvr_cccb_wait_for_idle(struct pvr_cccb *pvr_cccb, u32 timeout);
 int pvr_cccb_unlock_send_kccb_kick(struct pvr_device *pvr_dev,
 				   struct pvr_cccb *pvr_cccb, u32 cctx_fw_addr,
 				   struct pvr_hwrt_data *hwrt);
+int pvr_cccb_check_command_space(struct pvr_cccb *pvr_cccb, size_t size);
 
 /**
  * pvr_cccb_lock() - Lock a client CCB for writing
@@ -98,6 +95,18 @@ pvr_cccb_unlock_rollback(struct pvr_cccb *pvr_cccb)
 
 	pvr_cccb->write_offset = pvr_cccb->old_write_offset;
 	mutex_unlock(&pvr_cccb->lock);
+}
+
+/**
+ * pvr_cccb_get_size_of_cmd_with_hdr() - Get the size of a command and its header.
+ * @cmd_size: Command size.
+ *
+ * Returns the size of the command and its header.
+ */
+static __always_inline u32
+pvr_cccb_get_size_of_cmd_with_hdr(u32 cmd_size)
+{
+	return sizeof(struct rogue_fwif_ccb_cmd_header) + cmd_size;
 }
 
 #endif /* __PVR_CCCB_H__ */
