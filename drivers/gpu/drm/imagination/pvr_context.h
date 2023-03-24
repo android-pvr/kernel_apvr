@@ -192,6 +192,9 @@ struct pvr_context {
 
 	/** @job_pending: Job pending worker, used to evalulate job dependencies. */
 	struct work_struct job_pending_work;
+
+	/** @destroyed: True when the context has been destroyed. */
+	atomic_t destroyed;
 };
 
 /**
@@ -314,56 +317,6 @@ to_pvr_context_transfer_frag(struct pvr_context *ctx)
 }
 
 /**
- * pvr_context_lookup() - Lookup context pointer from handle and file.
- * @pvr_file: Pointer to pvr_file structure.
- * @handle: Context handle.
- *
- * Takes reference on context. Call pvr_context_put() to release.
- *
- * Return:
- *  * The requested context on success, or
- *  * %NULL on failure (context does not exist, or does not belong to @pvr_file).
- */
-static __always_inline struct pvr_context *
-pvr_context_lookup(struct pvr_file *pvr_file, u32 handle)
-{
-	struct pvr_context *ctx = xa_load(&pvr_file->ctx_handles, handle);
-
-	if (ctx) {
-		kref_get(&ctx->ref_count);
-
-		return ctx;
-	}
-
-	return NULL;
-}
-
-/**
- * pvr_context_lookup_id() - Lookup context pointer from ID.
- * @pvr_dev: Device pointer.
- * @id: FW context ID.
- *
- * Takes reference on context. Call pvr_context_put() to release.
- *
- * Return:
- *  * The requested context on success, or
- *  * %NULL on failure (context does not exist).
- */
-static __always_inline struct pvr_context *
-pvr_context_lookup_id(struct pvr_device *pvr_dev, u32 id)
-{
-	struct pvr_context *ctx = xa_load(&pvr_dev->ctx_ids, id);
-
-	if (ctx) {
-		kref_get(&ctx->ref_count);
-
-		return ctx;
-	}
-
-	return NULL;
-}
-
-/**
  * pvr_context_get() - Take additional reference on context.
  * @ctx: Context pointer.
  *
@@ -382,16 +335,69 @@ pvr_context_get(struct pvr_context *ctx)
 	return ctx;
 }
 
+/**
+ * pvr_context_lookup() - Lookup context pointer from handle and file.
+ * @pvr_file: Pointer to pvr_file structure.
+ * @handle: Context handle.
+ *
+ * Takes reference on context. Call pvr_context_put() to release.
+ *
+ * Return:
+ *  * The requested context on success, or
+ *  * %NULL on failure (context does not exist, or does not belong to @pvr_file).
+ */
+static __always_inline struct pvr_context *
+pvr_context_lookup(struct pvr_file *pvr_file, u32 handle)
+{
+	struct pvr_context *ctx;
+
+	/* Take the array lock to protect against context removal.  */
+	xa_lock(&pvr_file->ctx_handles);
+	ctx = pvr_context_get(xa_load(&pvr_file->ctx_handles, handle));
+	xa_unlock(&pvr_file->ctx_handles);
+
+	return ctx;
+}
+
+/**
+ * pvr_context_lookup_id() - Lookup context pointer from ID.
+ * @pvr_dev: Device pointer.
+ * @id: FW context ID.
+ *
+ * Takes reference on context. Call pvr_context_put() to release.
+ *
+ * Return:
+ *  * The requested context on success, or
+ *  * %NULL on failure (context does not exist).
+ */
+static __always_inline struct pvr_context *
+pvr_context_lookup_id(struct pvr_device *pvr_dev, u32 id)
+{
+	struct pvr_context *ctx;
+
+	/* Take the array lock to protect against context removal.  */
+	xa_lock(&pvr_dev->ctx_ids);
+
+	/* Contexts are removed from the ctx_ids set in the context release path,
+	 * meaning the ref_count reached zero before they get removed. We need
+	 * to make sure we're not trying to acquire a context that's being
+	 * destroyed.
+	 */
+	ctx = xa_load(&pvr_dev->ctx_ids, id);
+	if (!kref_get_unless_zero(&ctx->ref_count))
+		ctx = NULL;
+
+	xa_unlock(&pvr_dev->ctx_ids);
+
+	return ctx;
+}
+
 struct pvr_context_queue_fence_ctx *
 pvr_context_queue_fence_ctx_from_fence(struct dma_fence *fence);
 
 void pvr_context_put(struct pvr_context *ctx);
 
 int pvr_context_destroy(struct pvr_file *pvr_file, u32 handle);
-
-int pvr_context_wait_idle(struct pvr_context *ctx, u32 timeout);
-
-bool pvr_context_fail_fences(struct pvr_context *ctx, int err);
 
 void pvr_destroy_contexts_for_file(struct pvr_file *pvr_file);
 
