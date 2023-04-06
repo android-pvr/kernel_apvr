@@ -65,7 +65,7 @@ extern "C" {
 #define DRM_IOCTL_PVR_GET_HEAP_INFO PVR_IOCTL(0x0b, DRM_IOWR, get_heap_info)
 #define DRM_IOCTL_PVR_VM_MAP PVR_IOCTL(0x0c, DRM_IOW, vm_map)
 #define DRM_IOCTL_PVR_VM_UNMAP PVR_IOCTL(0x0d, DRM_IOW, vm_unmap)
-#define DRM_IOCTL_PVR_SUBMIT_JOB PVR_IOCTL(0x0e, DRM_IOW, submit_job)
+#define DRM_IOCTL_PVR_SUBMIT_JOBS PVR_IOCTL(0x0e, DRM_IOW, submit_jobs)
 /* clang-format on */
 
 /**
@@ -379,6 +379,35 @@ enum drm_pvr_ctx_type {
 	 */
 	DRM_PVR_CTX_TYPE_TRANSFER_FRAG,
 };
+
+/**
+ * struct drm_pvr_obj_array - Container used to pass arrays of objects
+ *
+ * It is not unusual to have to extend objects to pass new parameters, and the DRM
+ * ioctl infrastructure is supporting that by padding ioctl arguments with zeros
+ * when the data passed by userspace is smaller than the struct defined in the
+ * drm_ioctl_desc, thus keeping things backward compatible. This drm_pvr_obj_array
+ * is just applying the same concepts to indirect objects passed through arrays
+ * referenced from the main ioctl arguments structure: the stride basically defines
+ * the size of the object passed by userspace, which allows the kernel driver to
+ * pad things with zeros when it's smaller than the size of the object it expects.
+ *
+ * Use DRM_PVR_OBJ_ARRAY() to fill object array fields, unless you have a very
+ * good reason not to.
+ */
+struct drm_pvr_obj_array {
+	/** @stride: Stride of object struct. Used for versioning. */
+	__u32 stride;
+
+	/** @count: Number of objects in the array. */
+	__u32 count;
+
+	/** @array: User pointer to an array of objects. */
+	__u64 array;
+};
+
+#define DRM_PVR_OBJ_ARRAY(cnt, ptr) \
+	{ .stride = sizeof((ptr)[0]), .count = (cnt), .array = (__u64)(uintptr_t)(ptr) }
 
 /* clang-format on */
 
@@ -919,6 +948,58 @@ struct drm_pvr_ioctl_vm_unmap_args {
 };
 
 /**
+ * DOC: Flags for the drm_pvr_sync_op object.
+ *
+ * Operations
+ * ~~~~~~~~~~
+ * .. c:macro:: DRM_PVR_SYNC_OP_HANDLE_TYPE_MASK
+ *
+ *    Handle type mask for the drm_pvr_sync_op::flags field.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ
+ *
+ *    Indicates the handle passed in drm_pvr_sync_op::handle is a syncobj handle.
+ *    This is the default type.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
+ *
+ *    Indicates the handle passed in drm_pvr_sync_op::handle is a timeline syncobj handle.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_SIGNAL
+ *
+ *    Signal operation requested. The out-fence bound to the job will be attached to
+ *    the syncobj whose handle is passed in drm_pvr_sync_op::handle.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_WAIT
+ *
+ *    Wait operation requested. The job will wait for this particular syncobj or syncobj
+ *    point to be signaled before being started.
+ *    This is the default operation.
+ */
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_MASK 0xf
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ 0
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ 1
+#define DRM_PVR_SYNC_OP_FLAG_SIGNAL _BITULL(31)
+#define DRM_PVR_SYNC_OP_FLAG_WAIT 0
+
+#define DRM_PVR_SYNC_OP_FLAGS_MASK (DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_MASK | \
+				    DRM_PVR_SYNC_OP_FLAG_SIGNAL)
+
+/**
+ * struct drm_pvr_sync_op - Object describing a sync operation
+ */
+struct drm_pvr_sync_op {
+	/** @handle: Handle of sync object. */
+	__u32 handle;
+
+	/** @flags: Combination of DRM_PVR_SYNC_OP_FLAG_ flags. */
+	__u32 flags;
+
+	/** @value: Timeline value for this drm_syncobj. MBZ for a binary syncobj. */
+	__u64 value;
+};
+
+/**
  * DOC: Flags for SUBMIT_JOB ioctl geometry command.
  *
  * Operations
@@ -988,86 +1069,6 @@ struct drm_pvr_ioctl_vm_unmap_args {
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_PREVENT_CDM_OVERLAP |                     \
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_GET_VIS_RESULTS)
 
-/*
- * struct drm_pvr_job_render_args - Arguments for %DRM_PVR_JOB_TYPE_RENDER
- */
-struct drm_pvr_job_render_args {
-	/**
-	 * @geom_cmd_stream: [IN] Pointer to command stream for geometry command.
-	 *
-	 * The geometry command stream must be u64-aligned.
-	 */
-	__u64 geom_cmd_stream;
-
-	/**
-	 * @frag_cmd_stream: [IN] Pointer to command stream for fragment command.
-	 *
-	 * The fragment command stream must be u64-aligned.
-	 */
-	__u64 frag_cmd_stream;
-
-	/**
-	 * @geom_cmd_stream_len: [IN] Length of geometry command stream, in bytes.
-	 */
-	__u32 geom_cmd_stream_len;
-
-	/**
-	 * @frag_cmd_stream_len: [IN] Length of fragment command stream, in bytes.
-	 */
-	__u32 frag_cmd_stream_len;
-
-	/**
-	 * @in_syncobj_handles_frag: [IN] Pointer to array of drm_syncobj handles for
-	 *                                input fences for fragment job.
-	 *
-	 * This array must be &num_in_syncobj_handles_frag entries large.
-	 *
-	 * drm_syncobj handles for the geometry job are contained in
-	 * &struct drm_pvr_ioctl_submit_job_args.in_syncobj_handles.
-	 */
-	__u64 in_syncobj_handles_frag;
-
-	/**
-	 * @num_in_syncobj_handles_frag: [IN] Number of input syncobj handles for fragment job.
-	 */
-	__u32 num_in_syncobj_handles_frag;
-
-	/**
-	 * @out_syncobj_geom: [OUT] drm_syncobj handle for geometry output fence
-	 */
-	__u32 out_syncobj_geom;
-
-	/**
-	 * @out_syncobj_frag: [OUT] drm_syncobj handle for fragment output fence
-	 */
-	__u32 out_syncobj_frag;
-
-	/**
-	 * @hwrt_data_set_handle: [IN] Handle for HWRT data set.
-	 *
-	 * This must be a valid handle returned by %DRM_IOCTL_PVR_CREATE_OBJECT.
-	 */
-	__u32 hwrt_data_set_handle;
-
-	/**
-	 * @hwrt_data_index: [IN] Index of HWRT data within data set.
-	 */
-	__u32 hwrt_data_index;
-
-	/**
-	 * @flags: [IN] Flags for geometry command.
-	 */
-	__u32 geom_flags;
-
-	/**
-	 * @flags: [IN] Flags for fragment command.
-	 */
-	__u32 frag_flags;
-
-	/** @_padding_54: Reserved. This field must be zeroed. */
-	__u32 _padding_54;
-};
-
 /**
  * DOC: Flags for SUBMIT_JOB ioctl compute command.
  *
@@ -1087,33 +1088,6 @@ struct drm_pvr_job_render_args {
 	(DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_PREVENT_ALL_OVERLAP | \
 	 DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_SINGLE_CORE)
 
-/*
- * struct drm_pvr_job_compute_args - Arguments for %DRM_PVR_JOB_TYPE_COMPUTE
- */
-struct drm_pvr_job_compute_args {
-	/**
-	 * @cmd_stream: [IN] Pointer to command stream for compute command.
-	 *
-	 * The command stream must be u64-aligned.
-	 */
-	__u64 cmd_stream;
-
-	/**
-	 * @cmd_stream_len: [IN] Length of compute command stream, in bytes.
-	 */
-	__u32 cmd_stream_len;
-
-	/**
-	 * @flags: [IN] Flags for command.
-	 */
-	__u32 flags;
-
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
-};
-
 /**
  * DOC: Flags for SUBMIT_JOB ioctl transfer command.
  *
@@ -1128,76 +1102,37 @@ struct drm_pvr_job_compute_args {
 #define DRM_PVR_SUBMIT_JOB_TRANSFER_CMD_FLAGS_MASK \
 	DRM_PVR_SUBMIT_JOB_TRANSFER_CMD_SINGLE_CORE
 
-/*
- * struct drm_pvr_job_transfer_args - Arguments for %DRM_PVR_JOB_TYPE_TRANSFER_FRAG
- */
-struct drm_pvr_job_transfer_args {
-	/**
-	 * @cmd_stream: [IN] Pointer to command stream for transfer command.
-	 *
-	 * The command stream must be u64-aligned.
-	 */
-	__u64 cmd_stream;
-
-	/**
-	 * @cmd_stream_len: [IN] Length of transfer command stream, in bytes.
-	 */
-	__u32 cmd_stream_len;
-
-	/**
-	 * @flags: [IN] Flags for command.
-	 */
-	__u32 flags;
-
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
-};
-
-/*
- * DOC: Flags for SUBMIT_JOB ioctl null command.
- */
-#define DRM_PVR_SUBMIT_JOB_NULL_CMD_FLAGS_MASK 0
-
-/*
- * struct drm_pvr_job_null_args - Arguments for %DRM_PVR_JOB_TYPE_NULL
- */
-struct drm_pvr_job_null_args {
-	/**
-	 * @flags: [IN] Flags for command.
-	 */
-	__u32 flags;
-
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
-
-	/** @_padding_14: Reserved. This field must be zeroed. */
-	__u32 _padding_14;
-};
-
 /**
- * enum drm_pvr_job_type - Arguments for &drm_pvr_ioctl_submit_job_args.job_type
+ * enum drm_pvr_job_type - Arguments for &drm_pvr_job.job_type
  */
 enum drm_pvr_job_type {
-	DRM_PVR_JOB_TYPE_RENDER = 0,
+	DRM_PVR_JOB_TYPE_GEOMETRY = 0,
+	DRM_PVR_JOB_TYPE_FRAGMENT,
 	DRM_PVR_JOB_TYPE_COMPUTE,
 	DRM_PVR_JOB_TYPE_TRANSFER_FRAG,
-	DRM_PVR_JOB_TYPE_NULL,
 };
 
 /**
- * struct drm_pvr_ioctl_submit_job_args - Arguments for %DRM_IOCTL_PVR_SUBMIT_JOB
+ * struct drm_pvr_hwrt_data_ref - Reference HWRT data
  */
-struct drm_pvr_ioctl_submit_job_args {
+struct drm_pvr_hwrt_data_ref {
+	/** @set_handle: HWRT data set handle. */
+	__u32 set_handle;
+
+	/** @data_index: Index of the HWRT data inside the data set. */
+	__u32 data_index;
+};
+
+/**
+ * struct drm_pvr_job - Job arguments passed to the %DRM_IOCTL_PVR_SUBMIT_JOBS ioctl
+ */
+struct drm_pvr_job {
 	/**
-	 * @job_type: [IN] Type of job being submitted
+	 * @type: [IN] Type of job being submitted
 	 *
 	 * This must be one of the values defined by &enum drm_pvr_job_type.
 	 */
-	__u32 job_type;
+	__u32 type;
 
 	/**
 	 * @context: [IN] Context handle.
@@ -1211,20 +1146,42 @@ struct drm_pvr_ioctl_submit_job_args {
 	 */
 	__u32 context_handle;
 
-	/** @data: [IN] User pointer to job type specific arguments. */
-	__u64 data;
-
 	/**
-	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
+	 * @flags: [IN] Flags for command.
 	 *
-	 * This array must be &num_in_syncobj_handles entries large.
+	 * Those are job-dependent. See DRM_PVR_SUBMIT_JOB_xxx_
 	 */
-	__u64 in_syncobj_handles;
+	__u32 flags;
 
 	/**
-	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
+	 * @cmd_stream_len: [IN] Length of command stream, in bytes.
 	 */
-	__u32 num_in_syncobj_handles;
+	__u32 cmd_stream_len;
+
+	/**
+	 * @cmd_stream: [IN] Pointer to command stream for command.
+	 *
+	 * The command stream must be u64-aligned.
+	 */
+	__u64 cmd_stream;
+
+	/** @sync_ops: [IN] Fragment sync operations. */
+	struct drm_pvr_obj_array sync_ops;
+
+	/**
+	 * @hwrt: [IN] HWRT data used by render jobs (geometry or fragment).
+	 *
+	 * Must be zero for non-render jobs.
+	 */
+	struct drm_pvr_hwrt_data_ref hwrt;
+};
+
+/**
+ * struct drm_pvr_ioctl_submit_jobs_args - Arguments for %DRM_IOCTL_PVR_SUBMIT_JOB
+ */
+struct drm_pvr_ioctl_submit_jobs_args {
+	/** @jobs: [IN] Array of jobs to submit. */
+	struct drm_pvr_obj_array jobs;
 };
 
 /* Definitions for coredump decoding in userspace. */

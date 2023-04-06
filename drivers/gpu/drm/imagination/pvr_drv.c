@@ -25,6 +25,7 @@
 #include <linux/err.h>
 #include <linux/export.h>
 #include <linux/fs.h>
+#include <linux/kernel.h>
 #include <linux/limits.h>
 #include <linux/math.h>
 #include <linux/minmax.h>
@@ -962,16 +963,8 @@ pvr_ioctl_vm_map(struct drm_device *drm_dev, void *raw_args,
 		goto err_put_pvr_object;
 	}
 
-	/*
-	 * If the caller has specified that the entire object should be mapped,
-	 * use the more efficient pvr_vm_map().
-	 */
-	if (args->offset == 0 && args->size == pvr_obj_size) {
-		err = pvr_vm_map(vm_ctx, pvr_obj, args->device_addr);
-	} else {
-		err = pvr_vm_map_partial(vm_ctx, pvr_obj, args->offset,
-					 args->device_addr, args->size);
-	}
+	err = pvr_vm_map(vm_ctx, pvr_obj, args->offset,
+			 args->device_addr, args->size);
 	if (err)
 		goto err_put_pvr_object;
 
@@ -1046,14 +1039,57 @@ pvr_ioctl_vm_unmap(struct drm_device *drm_dev, void *raw_args,
  *  * -%EINVAL if arguments are invalid.
  */
 int
-pvr_ioctl_submit_job(struct drm_device *drm_dev, void *raw_args,
-		     struct drm_file *file)
+pvr_ioctl_submit_jobs(struct drm_device *drm_dev, void *raw_args,
+		      struct drm_file *file)
 {
-	struct drm_pvr_ioctl_submit_job_args *args = raw_args;
+	struct drm_pvr_ioctl_submit_jobs_args *args = raw_args;
 	struct pvr_device *pvr_dev = to_pvr_device(drm_dev);
 	struct pvr_file *pvr_file = to_pvr_file(file);
 
-	return pvr_submit_job(pvr_dev, pvr_file, args);
+	return pvr_submit_jobs(pvr_dev, pvr_file, args);
+}
+
+void *
+pvr_get_obj_array(struct drm_pvr_obj_array *in, u32 min_stride, u32 obj_size)
+{
+	u32 cpy_elem_size = min_t(u32, in->stride, obj_size);
+	int ret = 0;
+	void *out;
+
+	if (in->stride < min_stride)
+		return ERR_PTR(-EINVAL);
+
+	if (!in->count)
+		return NULL;
+
+	out = kvmalloc_array(in->count, obj_size, GFP_KERNEL | __GFP_ZERO);
+	if (!out)
+		return ERR_PTR(-ENOMEM);
+
+	if (obj_size == in->stride) {
+		if (copy_from_user(out, u64_to_user_ptr(in->array), obj_size * in->count))
+			ret = -EFAULT;
+	} else {
+		void __user *in_ptr = u64_to_user_ptr(in->array);
+		void *out_ptr = out;
+
+		for (u32 i = 0; i < in->count; i++) {
+			if (copy_from_user(out_ptr, in_ptr, cpy_elem_size)) {
+				ret = -EFAULT;
+				break;
+			}
+
+			out_ptr += obj_size;
+			in_ptr += in->stride;
+		}
+	}
+
+	if (ret) {
+		kvfree(out);
+		return ERR_PTR(ret);
+	}
+
+	return out;
 }
 
 #define DRM_PVR_IOCTL(_name, _func, _flags) \
@@ -1076,7 +1112,7 @@ static const struct drm_ioctl_desc pvr_drm_driver_ioctls[] = {
 	DRM_PVR_IOCTL(GET_HEAP_INFO, get_heap_info, DRM_RENDER_ALLOW),
 	DRM_PVR_IOCTL(VM_MAP, vm_map, DRM_RENDER_ALLOW),
 	DRM_PVR_IOCTL(VM_UNMAP, vm_unmap, DRM_RENDER_ALLOW),
-	DRM_PVR_IOCTL(SUBMIT_JOB, submit_job, DRM_RENDER_ALLOW),
+	DRM_PVR_IOCTL(SUBMIT_JOBS, submit_jobs, DRM_RENDER_ALLOW),
 };
 
 /* clang-format on */
@@ -1171,7 +1207,7 @@ pvr_drm_driver_postclose(__always_unused struct drm_device *drm_dev,
 DEFINE_DRM_GEM_FOPS(pvr_drm_driver_fops);
 
 static struct drm_driver pvr_drm_driver = {
-	.driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_SYNCOBJ,
+	.driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_SYNCOBJ | DRIVER_SYNCOBJ_TIMELINE,
 	.open = pvr_drm_driver_open,
 	.postclose = pvr_drm_driver_postclose,
 	.ioctls = pvr_drm_driver_ioctls,
