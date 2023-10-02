@@ -9,6 +9,7 @@ config DRM_POWERVR
 	select DRM_EXEC
 	select DRM_GEM_SHMEM_HELPER
 	select DRM_SCHED
+	select DRM_GPUVM
 	select FW_LOADER
 	help
 	  Choose this option if you have a system that has an Imagination

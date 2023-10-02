@@ -10,7 +10,7 @@
 #include "pvr_rogue_heap_config.h"
 
 #include <drm/drm_gem.h>
-#include <drm/drm_gpuva_mgr.h>
+#include <drm/drm_gpuvm.h>
 
 #include <linux/container_of.h>
 #include <linux/err.h>
@@ -34,7 +34,7 @@
  *
  * This binding is immutable for the life of the context.
  * @mmu_ctx: The context for binding to physical memory.
- * @gpuva_mgr: GPUVA manager object associated with this context.
+ * @gpuvm_mgr: GPUVM object associated with this context.
  * @lock: Global lock on this entire structure of page tables.
  * @fw_mem_ctx_obj: Firmware object representing firmware memory context.
  * @ref_count: Reference count of object.
@@ -42,7 +42,7 @@
 struct pvr_vm_context {
 	struct pvr_device *pvr_dev;
 	struct pvr_mmu_context *mmu_ctx;
-	struct drm_gpuva_manager gpuva_mgr;
+	struct drm_gpuvm gpuvm_mgr;
 	struct mutex lock;
 	struct pvr_fw_object *fw_mem_ctx_obj;
 	struct kref ref_count;
@@ -165,7 +165,7 @@ pvr_vm_gpuva_unlink(struct pvr_vm_gpuva_op_ctx *op, struct pvr_vm_gpuva *va)
  * @op: gpuva op containing the remap details.
  * @op_ctx: Operation context.
  *
- * Context: Called by drm_gpuva_sm_map following a successful mapping while
+ * Context: Called by drm_gpuvm_sm_map following a successful mapping while
  * @op_ctx.vm_ctx mutex is held.
  *
  * Return:
@@ -187,7 +187,7 @@ pvr_vm_gpuva_map(struct drm_gpuva_op *op, void *op_ctx)
 	if (err)
 		return err;
 
-	drm_gpuva_map(&ctx->vm_ctx->gpuva_mgr, &ctx->new_va->base, &op->map);
+	drm_gpuva_map(&ctx->vm_ctx->gpuvm_mgr, &ctx->new_va->base, &op->map);
 	pvr_vm_gpuva_link(ctx->new_va);
 	ctx->new_va = NULL;
 
@@ -205,7 +205,7 @@ pvr_vm_gpuva_map(struct drm_gpuva_op *op, void *op_ctx)
  * @op: gpuva op containing the unmap details.
  * @op_ctx: Operation context.
  *
- * Context: Called by drm_gpuva_sm_unmap following a successful unmapping while
+ * Context: Called by drm_gpuvm_sm_unmap following a successful unmapping while
  * @op_ctx.vm_ctx mutex is held.
  *
  * Return:
@@ -234,7 +234,7 @@ pvr_vm_gpuva_unmap(struct drm_gpuva_op *op, void *op_ctx)
  * @op: gpuva op containing the remap details.
  * @op_ctx: Operation context.
  *
- * Context: Called by either drm_gpuva_sm_map or drm_gpuva_sm_unmap when a
+ * Context: Called by either drm_gpuvm_sm_map or drm_gpuvm_sm_unmap when a
  * mapping or unmapping operation causes a region to be split. The
  * @op_ctx.vm_ctx mutex is held.
  *
@@ -327,7 +327,7 @@ pvr_device_addr_and_size_are_valid(u64 device_addr, u64 size)
 	       (device_addr + size <= PVR_PAGE_TABLE_ADDR_SPACE_SIZE);
 }
 
-static const struct drm_gpuva_fn_ops pvr_vm_gpuva_ops = {
+static const struct drm_gpuvm_ops pvr_vm_gpuva_ops = {
 	.sm_step_map = pvr_vm_gpuva_map,
 	.sm_step_remap = pvr_vm_gpuva_remap,
 	.sm_step_unmap = pvr_vm_gpuva_unmap,
@@ -390,9 +390,9 @@ pvr_vm_create_context(struct pvr_device *pvr_dev, bool is_userspace_context)
 	kref_init(&vm_ctx->ref_count);
 	mutex_init(&vm_ctx->lock);
 
-	drm_gpuva_manager_init(&vm_ctx->gpuva_mgr,
-			       is_userspace_context ? "PowerVR-user-VM" : "PowerVR-FW-VM",
-			       0, 1ULL << device_addr_bits, 0, 0, &pvr_vm_gpuva_ops);
+	drm_gpuvm_init(&vm_ctx->gpuvm_mgr,
+		       is_userspace_context ? "PowerVR-user-VM" : "PowerVR-FW-VM",
+		       0, 1ULL << device_addr_bits, 0, 0, &pvr_vm_gpuva_ops);
 
 	vm_ctx->mmu_ctx = pvr_mmu_context_create(pvr_dev);
 	err = PTR_ERR_OR_ZERO(&vm_ctx->mmu_ctx);
@@ -437,10 +437,10 @@ pvr_vm_context_release(struct kref *ref_count)
 	if (vm_ctx->fw_mem_ctx_obj)
 		pvr_fw_object_destroy(vm_ctx->fw_mem_ctx_obj);
 
-	WARN_ON(pvr_vm_unmap(vm_ctx, vm_ctx->gpuva_mgr.mm_start,
-			     vm_ctx->gpuva_mgr.mm_range));
+	WARN_ON(pvr_vm_unmap(vm_ctx, vm_ctx->gpuvm_mgr.mm_start,
+			     vm_ctx->gpuvm_mgr.mm_range));
 
-	drm_gpuva_manager_destroy(&vm_ctx->gpuva_mgr);
+	drm_gpuvm_destroy(&vm_ctx->gpuvm_mgr);
 	pvr_mmu_context_destroy(vm_ctx->mmu_ctx);
 	mutex_destroy(&vm_ctx->lock);
 
@@ -582,7 +582,7 @@ pvr_vm_map(struct pvr_vm_context *vm_ctx,
 	op_ctx.pvr_obj = pvr_obj;
 
 	mutex_lock(&vm_ctx->lock);
-	err = drm_gpuva_sm_map(&vm_ctx->gpuva_mgr, &op_ctx, device_addr, size,
+	err = drm_gpuvm_sm_map(&vm_ctx->gpuvm_mgr, &op_ctx, device_addr, size,
 			       gem_from_pvr_gem(pvr_obj), pvr_obj_offset);
 	mutex_unlock(&vm_ctx->lock);
 
@@ -651,7 +651,7 @@ pvr_vm_unmap(struct pvr_vm_context *vm_ctx, u64 device_addr, u64 size)
 	}
 
 	mutex_lock(&vm_ctx->lock);
-	err = drm_gpuva_sm_unmap(&vm_ctx->gpuva_mgr, &op_ctx, device_addr, size);
+	err = drm_gpuvm_sm_unmap(&vm_ctx->gpuvm_mgr, &op_ctx, device_addr, size);
 	mutex_unlock(&vm_ctx->lock);
 
 out:
@@ -925,7 +925,7 @@ pvr_vm_find_gem_object(struct pvr_vm_context *vm_ctx, u64 device_addr,
 
 	mutex_lock(&vm_ctx->lock);
 
-	va = drm_gpuva_find_first(&vm_ctx->gpuva_mgr, device_addr, 1);
+	va = drm_gpuva_find_first(&vm_ctx->gpuvm_mgr, device_addr, 1);
 	if (!va)
 		goto err_unlock;
 
