@@ -288,6 +288,15 @@ struct pvr_device {
 
 	/** @sched_wq: Workqueue for schedulers. */
 	struct workqueue_struct *sched_wq;
+
+	/** @max_freq_hz: Maximum GPU frequency, in Hz. */
+	u32 max_freq_hz;
+
+	/** @cur_freq_hz: Current GPU frequency, in Hz. */
+	u32 cur_freq_hz;
+
+	/** @profiling_enabled: Whether job profiling is enabled. */
+	atomic_t profiling_enabled;
 };
 
 /**
@@ -340,6 +349,35 @@ struct pvr_file {
 	 * This array is used to allocate handles returned to userspace.
 	 */
 	struct xarray vm_ctx_handles;
+
+	/**
+	 * @usage: GPU usage stats for this file.
+	 */
+	struct {
+		/**
+		 * @geometry_ns: Monotonic count of time spent executing geometry workloads
+		 *               belonging to this client, in ns.
+		 */
+		atomic64_t geometry_ns;
+
+		/**
+		 * @fragment_ns: Monotonic count of time spent executing fragment workloads
+		 *               belonging to this client, in ns.
+		 */
+		atomic64_t fragment_ns;
+
+		/**
+		 * @compute_ns: Monotonic count of time spent executing compute workloads belonging
+		 *              to this client, in ns.
+		 */
+		atomic64_t compute_ns;
+
+		/**
+		 * @transfer_frag_ns: Monotonic count of time spent executing transfer fragment
+		 *                    workloads belonging to this client, in ns.
+		 */
+		atomic64_t transfer_frag_ns;
+	} usage;
 };
 
 /**

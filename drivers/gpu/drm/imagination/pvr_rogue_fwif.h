@@ -1597,6 +1597,10 @@ struct rogue_fwif_ccb_cmd_header {
 	struct rogue_fwif_workest_kick_data work_est_kick_data __aligned(8);
 };
 
+struct rogue_fwif_timestamp_addr {
+	u32 fw_addr;
+} __aligned(8);
+
 /*
  ******************************************************************************
  * Client CCB commands which are only required by the kernel

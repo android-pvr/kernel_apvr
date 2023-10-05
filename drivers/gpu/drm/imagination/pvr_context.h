@@ -36,6 +36,9 @@ struct pvr_context {
 	/** @pvr_dev: Pointer to owning device. */
 	struct pvr_device *pvr_dev;
 
+	/** @pvr_file: Pointer to owning file. */
+	struct pvr_file *pvr_file;
+
 	/** @vm_ctx: Pointer to associated VM context. */
 	struct pvr_vm_context *vm_ctx;
 

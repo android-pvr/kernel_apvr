@@ -308,6 +308,7 @@ int pvr_context_create(struct pvr_file *pvr_file, struct drm_pvr_ioctl_create_co
 	ctx->type = args->type;
 	ctx->flags = args->flags;
 	ctx->pvr_dev = pvr_dev;
+	ctx->pvr_file = pvr_file;
 	kref_init(&ctx->ref_count);
 	strscpy(ctx->process_name, current->comm, sizeof(ctx->process_name));
 

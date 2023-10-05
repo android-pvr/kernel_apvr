@@ -4,6 +4,8 @@
 #include <drm/drm_managed.h>
 #include <drm/gpu_scheduler.h>
 
+#include <linux/log2.h>
+
 #include "pvr_cccb.h"
 #include "pvr_context.h"
 #include "pvr_device.h"
@@ -20,6 +22,24 @@
 #define CTX_FRAG_CCCB_SIZE_LOG2 15
 #define CTX_GEOM_CCCB_SIZE_LOG2 15
 #define CTX_TRANSFER_CCCB_SIZE_LOG2 15
+
+static int get_timestamp_array_size(struct pvr_cccb *cccb)
+{
+	/*
+	 * A profiled job at a minimum consists of a PRE_TIMESTAMP command, the job command itself,
+	 * a POST_TIMESTAMP command and a FENCE_UPDATE command. Use this as the minimum job size
+	 * when determining the number of possible profiled jobs in a client CCB.
+	 */
+	size_t min_job_size =
+		pvr_cccb_get_size_of_cmd_with_hdr(sizeof(struct rogue_fwif_timestamp_addr)) +
+		pvr_cccb_get_size_of_cmd_with_hdr(0) +
+		pvr_cccb_get_size_of_cmd_with_hdr(sizeof(struct rogue_fwif_timestamp_addr)) +
+		pvr_cccb_get_size_of_cmd_with_hdr(sizeof(struct rogue_fwif_ufo));
+	int max_nr_jobs = cccb->size / min_job_size;
+	int array_size = __roundup_pow_of_two(max_nr_jobs);
+
+	return array_size;
+}
 
 static int get_xfer_ctx_state_size(struct pvr_device *pvr_dev)
 {
@@ -342,8 +362,15 @@ static u32 job_cmds_size(struct pvr_job *job, u32 ufo_wait_count)
 	/* One UFO cmd for the fence signaling, one UFO cmd per native fence native,
 	 * and a command for the job itself.
 	 */
-	return ufo_cmds_size(1) + ufo_cmds_size(ufo_wait_count) +
-	       pvr_cccb_get_size_of_cmd_with_hdr(job->cmd_len);
+	u32 job_size = ufo_cmds_size(1) + ufo_cmds_size(ufo_wait_count) +
+		       pvr_cccb_get_size_of_cmd_with_hdr(job->cmd_len);
+
+	/* Profiling requires two timestamp commands. */
+	if (job->profiling_enabled)
+		job_size += 2 *
+			pvr_cccb_get_size_of_cmd_with_hdr(sizeof(struct rogue_fwif_timestamp_addr));
+
+	return job_size;
 }
 
 /**
@@ -642,9 +669,35 @@ static void pvr_queue_submit_job_to_cccb(struct pvr_job *job)
 		cmd->partial_render_geom_frag_fence.value = job->done_fence->seqno - 1;
 	}
 
+	if (job->profiling_enabled) {
+		struct rogue_fwif_timestamp_addr timestamp_addr = {0};
+
+		job->timestamp_id = queue->next_timestamp_id;
+		queue->next_timestamp_id = (queue->next_timestamp_id + 1) &
+					   queue->timestamp_id_mask;
+
+		pvr_fw_object_get_fw_addr_offset(queue->timestamp_obj,
+						 job->timestamp_id * 2 * sizeof(u64),
+						 &timestamp_addr.fw_addr);
+
+		pvr_cccb_write_command_with_header(cccb, ROGUE_FWIF_CCB_CMD_TYPE_PRE_TIMESTAMP,
+						   sizeof(timestamp_addr), &timestamp_addr, 0, 0);
+	}
+
 	/* Submit job to FW */
 	pvr_cccb_write_command_with_header(cccb, job->fw_ccb_cmd_type, job->cmd_len, job->cmd,
 					   job->id, job->id);
+
+	if (job->profiling_enabled) {
+		struct rogue_fwif_timestamp_addr timestamp_addr = {0};
+
+		pvr_fw_object_get_fw_addr_offset(queue->timestamp_obj,
+						 (job->timestamp_id * 2 + 1) * sizeof(u64),
+						 &timestamp_addr.fw_addr);
+
+		pvr_cccb_write_command_with_header(cccb, ROGUE_FWIF_CCB_CMD_TYPE_POST_TIMESTAMP,
+						   sizeof(timestamp_addr), &timestamp_addr, 0, 0);
+	}
 
 	/* Signal the job fence. */
 	pvr_fw_object_get_fw_addr(queue->timeline_ufo.fw_obj, &ufos[0].addr);
@@ -893,6 +946,30 @@ bool pvr_queue_fence_is_ufo_backed(struct dma_fence *f)
 	return false;
 }
 
+static void
+update_usage_stats(struct pvr_queue *queue, struct pvr_job *job)
+{
+	u64 pre_timestamp = READ_ONCE(queue->timestamp[job->timestamp_id * 2]);
+	u64 post_timestamp = READ_ONCE(queue->timestamp[job->timestamp_id * 2 + 1]);
+	struct pvr_file *pvr_file = queue->ctx->pvr_file;
+	u64 job_ns = post_timestamp - pre_timestamp;
+
+	switch (queue->type) {
+	case DRM_PVR_JOB_TYPE_GEOMETRY:
+		atomic64_add(job_ns, &pvr_file->usage.geometry_ns);
+		break;
+	case DRM_PVR_JOB_TYPE_FRAGMENT:
+		atomic64_add(job_ns, &pvr_file->usage.fragment_ns);
+		break;
+	case DRM_PVR_JOB_TYPE_COMPUTE:
+		atomic64_add(job_ns, &pvr_file->usage.compute_ns);
+		break;
+	case DRM_PVR_JOB_TYPE_TRANSFER_FRAG:
+		atomic64_add(job_ns, &pvr_file->usage.transfer_frag_ns);
+		break;
+	}
+}
+
 /**
  * pvr_queue_signal_done_fences() - Signal done fences.
  * @queue: Queue to check.
@@ -913,6 +990,9 @@ pvr_queue_signal_done_fences(struct pvr_queue *queue)
 			break;
 
 		if (!dma_fence_is_signaled(job->done_fence)) {
+			if (job->profiling_enabled && job->timestamp_id != U32_MAX)
+				update_usage_stats(queue, job);
+
 			dma_fence_signal(job->done_fence);
 			pvr_job_release_pm_ref(job);
 			atomic_dec(&queue->in_flight_job_count);
@@ -1232,6 +1312,7 @@ struct pvr_queue *pvr_queue_create(struct pvr_context *ctx,
 	};
 	struct pvr_device *pvr_dev = ctx->pvr_dev;
 	struct drm_gpu_scheduler *sched;
+	u32 timestamp_array_size;
 	struct pvr_queue *queue;
 	int ctx_state_size, err;
 	void *cpu_map;
@@ -1279,11 +1360,24 @@ struct pvr_queue *pvr_queue_create(struct pvr_context *ctx,
 	if (err)
 		goto err_free_queue;
 
+	timestamp_array_size = get_timestamp_array_size(&queue->cccb);
+	queue->timestamp_id_mask = timestamp_array_size - 1;
+
+	queue->timestamp = pvr_fw_object_create_and_map(pvr_dev,
+							timestamp_array_size * 2 *
+							sizeof(*queue->timestamp),
+							PVR_BO_FW_FLAGS_DEVICE_UNCACHED, NULL, NULL,
+							&queue->timestamp_obj);
+	if (IS_ERR(queue->timestamp)) {
+		err = PTR_ERR(queue->timestamp);
+		goto err_cccb_fini;
+	}
+
 	err = pvr_fw_object_create(pvr_dev, ctx_state_size,
 				   PVR_BO_FW_FLAGS_DEVICE_UNCACHED,
 				   reg_state_init, queue, &queue->reg_state_obj);
 	if (err)
-		goto err_cccb_fini;
+		goto err_free_timestamp;
 
 	init_fw_context(queue, fw_ctx_map);
 
@@ -1333,6 +1427,9 @@ err_release_ufo:
 
 err_release_reg_state:
 	pvr_fw_object_destroy(queue->reg_state_obj);
+
+err_free_timestamp:
+	pvr_fw_object_destroy(queue->timestamp_obj);
 
 err_cccb_fini:
 	pvr_cccb_fini(&queue->cccb);
@@ -1410,6 +1507,7 @@ void pvr_queue_destroy(struct pvr_queue *queue)
 
 	pvr_fw_object_unmap_and_destroy(queue->timeline_ufo.fw_obj);
 	pvr_fw_object_destroy(queue->reg_state_obj);
+	pvr_fw_object_destroy(queue->timestamp_obj);
 	pvr_cccb_fini(&queue->cccb);
 	mutex_destroy(&queue->cccb_fence_ctx.job_lock);
 	kfree(queue);

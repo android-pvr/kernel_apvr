@@ -1371,6 +1371,14 @@ pvr_drm_driver_postclose(__always_unused struct drm_device *drm_dev,
 
 static void pvr_show_fdinfo(struct drm_printer *p, struct drm_file *file)
 {
+	struct pvr_file *pvr_file = to_pvr_file(file);
+
+	drm_printf(p, "drm-engine-geometry:\t%llu\n", atomic64_read(&pvr_file->usage.geometry_ns));
+	drm_printf(p, "drm-engine-fragment:\t%llu\n", atomic64_read(&pvr_file->usage.fragment_ns));
+	drm_printf(p, "drm-engine-compute:\t%llu\n", atomic64_read(&pvr_file->usage.compute_ns));
+	drm_printf(p, "drm-engine-transfer-frag:\t%llu\n",
+		   atomic64_read(&pvr_file->usage.transfer_frag_ns));
+
 	drm_show_memory_stats(p, file);
 }
 

@@ -27,6 +27,8 @@ struct pvr_hwrt_data;
 /* Forward declaration from "pvr_queue.h". */
 struct pvr_queue;
 
+#define PVR_TIMESTAMP_ID_INVALID U32_MAX
+
 struct pvr_job {
 	/** @base: drm_sched_job object. */
 	struct drm_sched_job base;
@@ -88,6 +90,15 @@ struct pvr_job {
 	 * the job is done.
 	 */
 	bool has_pm_ref;
+
+	/**
+	 * @timestamp_id: Timestamp ID assigned to this job. Will be %PVR_TIMESTAMP_ID_INVALID if
+	 * no timestamp ID is assigned.
+	 */
+	u32 timestamp_id;
+
+	/** @profiling_enabled: True if profiling is enabled for this job. */
+	bool profiling_enabled;
 };
 
 /**

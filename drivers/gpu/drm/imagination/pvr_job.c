@@ -429,6 +429,8 @@ create_job(struct pvr_device *pvr_dev,
 	kref_init(&job->ref_count);
 	job->type = args->type;
 	job->pvr_dev = pvr_dev;
+	job->timestamp_id = PVR_TIMESTAMP_ID_INVALID;
+	job->profiling_enabled = atomic_read(&pvr_dev->profiling_enabled);
 
 	err = xa_alloc(&pvr_dev->job_ids, &job->id, job, xa_limit_32b, GFP_KERNEL);
 	if (err)

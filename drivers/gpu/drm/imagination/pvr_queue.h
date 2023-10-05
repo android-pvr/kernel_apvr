@@ -147,6 +147,18 @@ struct pvr_queue {
 
 	/** @callstack_addr: Initial call stack address for register state object. */
 	u64 callstack_addr;
+
+	/** @timestamp: Pointer to CPU mapping of job timestamp buffer. */
+	u64 *timestamp;
+
+	/** @timestamp_obj: FW object representing job timestamp buffer. */
+	struct pvr_fw_object *timestamp_obj;
+
+	/** @timestamp_id_mask: Mask for indexing into job timestamp buffer. */
+	u32 timestamp_id_mask;
+
+	/** @next_timestamp_id: Timestamp ID to use for next job submitted on this queue. */
+	u32 next_timestamp_id;
 };
 
 bool pvr_queue_fence_is_ufo_backed(struct dma_fence *f);

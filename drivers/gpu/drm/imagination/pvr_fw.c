@@ -372,9 +372,6 @@ fw_sysinit_init(void *cpu_ptr, void *priv)
 	struct pvr_fw_device *fw_dev = &pvr_dev->fw_dev;
 	struct pvr_fw_mem *fw_mem = &fw_dev->mem;
 	dma_addr_t fault_dma_addr = 0;
-	u32 clock_speed_hz = clk_get_rate(pvr_dev->core_clk);
-
-	WARN_ON(!clock_speed_hz);
 
 	WARN_ON(pvr_fw_object_get_dma_addr(fw_mem->fault_page_obj, 0, &fault_dma_addr));
 	fwif_sysinit->fault_phys_addr = (u64)fault_dma_addr;
@@ -403,7 +400,7 @@ fw_sysinit_init(void *cpu_ptr, void *priv)
 	fwif_sysinit->filter_flags = 0;
 	fwif_sysinit->hw_perf_filter = 0;
 	fwif_sysinit->firmware_perf = FW_PERF_CONF_NONE;
-	fwif_sysinit->initial_core_clock_speed = clock_speed_hz;
+	fwif_sysinit->initial_core_clock_speed = pvr_dev->cur_freq_hz;
 	fwif_sysinit->active_pm_latency_ms = 0;
 	fwif_sysinit->gpio_validation_mode = ROGUE_FWIF_GPIO_VAL_OFF;
 	fwif_sysinit->firmware_started = false;
@@ -436,11 +433,8 @@ fw_runtime_cfg_init(void *cpu_ptr, void *priv)
 {
 	struct rogue_fwif_runtime_cfg *runtime_cfg = cpu_ptr;
 	struct pvr_device *pvr_dev = priv;
-	u32 clock_speed_hz = clk_get_rate(pvr_dev->core_clk);
 
-	WARN_ON(!clock_speed_hz);
-
-	runtime_cfg->core_clock_speed = clock_speed_hz;
+	runtime_cfg->core_clock_speed = pvr_dev->cur_freq_hz;
 	runtime_cfg->active_pm_latency_ms = 0;
 	runtime_cfg->active_pm_latency_persistant = true;
 	WARN_ON(PVR_FEATURE_VALUE(pvr_dev, num_clusters,
@@ -451,6 +445,12 @@ static void
 fw_gpu_util_fwcb_init(void *cpu_ptr, void *priv)
 {
 	struct rogue_fwif_gpu_util_fwcb *gpu_util_fwcb = cpu_ptr;
+	struct pvr_device *pvr_dev = priv;
+
+	gpu_util_fwcb->time_corr[1].cr_delta_to_os_delta_kns = ((256ull * 1000000000ull) << 20) /
+							       pvr_dev->cur_freq_hz;
+	gpu_util_fwcb->time_corr[1].core_clock_speed = pvr_dev->cur_freq_hz;
+	gpu_util_fwcb->time_corr_seq_count = 1;
 
 	gpu_util_fwcb->last_word = PVR_FWIF_GPU_UTIL_STATE_IDLE;
 }

@@ -44,6 +44,8 @@ pvr_debugfs_init(struct drm_minor *minor)
 
 		entry->init(pvr_dev, dir);
 	}
+
+	debugfs_create_atomic_t("profiling_enabled", 0600, root, &pvr_dev->profiling_enabled);
 }
 
 /*

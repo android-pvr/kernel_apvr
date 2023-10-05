@@ -118,6 +118,10 @@ static int pvr_device_clk_init(struct pvr_device *pvr_dev)
 	pvr_dev->sys_clk = sys_clk;
 	pvr_dev->mem_clk = mem_clk;
 
+	/* TODO: Update once DVFS is implemented. */
+	pvr_dev->max_freq_hz = clk_get_rate(pvr_dev->core_clk);
+	pvr_dev->cur_freq_hz = clk_get_rate(pvr_dev->core_clk);
+
 	return 0;
 }
 
