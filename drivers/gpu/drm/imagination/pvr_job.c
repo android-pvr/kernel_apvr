@@ -138,6 +138,8 @@ convert_frag_flags(u32 in_flags)
 		out_flags |= ROGUE_FRAG_FLAGS_SCRATCHBUFFER;
 	if (in_flags & DRM_PVR_SUBMIT_JOB_FRAG_CMD_GET_VIS_RESULTS)
 		out_flags |= ROGUE_FRAG_FLAGS_GET_VIS_RESULTS;
+	if (in_flags & DRM_PVR_SUBMIT_JOB_FRAG_CMD_DISABLE_PIXELMERGE)
+		out_flags |= ROGUE_FRAG_FLAGS_DISABLE_PIXELMERGE;
 
 	return out_flags;
 }

@@ -63,6 +63,8 @@
 #define ROGUE_FRAG_FLAGS_DEPTHBUFFER BIT_MASK(7)
 /* Indicates whether a stencil buffer is present. */
 #define ROGUE_FRAG_FLAGS_STENCILBUFFER BIT_MASK(8)
+/* Disable pixel merging for this render. */
+#define ROGUE_FRAG_FLAGS_DISABLE_PIXELMERGE BIT_MASK(15)
 /* Indicates whether a scratch buffer is present. */
 #define ROGUE_FRAG_FLAGS_SCRATCHBUFFER BIT_MASK(19)
 /* Disallow compute overlapped with this render. */

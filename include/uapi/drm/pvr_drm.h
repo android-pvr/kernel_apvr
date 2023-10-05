@@ -1156,6 +1156,10 @@ struct drm_pvr_sync_op {
  *    the final surface. It also forces the full screen copy expected to be
  *    present on the last render after all partial renders have completed.
  *
+ * .. c:macro:: DRM_PVR_SUBMIT_JOB_FRAG_CMD_DISABLE_PIXELMERGE
+ *
+ *    Disable pixel merging for this render.
+ *
  * .. c:macro:: DRM_PVR_SUBMIT_JOB_FRAG_CMD_FLAGS_MASK
  *
  *    Logical OR of all the fragment cmd flags.
@@ -1167,6 +1171,7 @@ struct drm_pvr_sync_op {
 #define DRM_PVR_SUBMIT_JOB_FRAG_CMD_SCRATCHBUFFER _BITULL(4)
 #define DRM_PVR_SUBMIT_JOB_FRAG_CMD_GET_VIS_RESULTS _BITULL(5)
 #define DRM_PVR_SUBMIT_JOB_FRAG_CMD_PARTIAL_RENDER _BITULL(6)
+#define DRM_PVR_SUBMIT_JOB_FRAG_CMD_DISABLE_PIXELMERGE _BITULL(7)
 #define DRM_PVR_SUBMIT_JOB_FRAG_CMD_FLAGS_MASK                                 \
 	(DRM_PVR_SUBMIT_JOB_FRAG_CMD_SINGLE_CORE |                             \
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_DEPTHBUFFER |                             \
@@ -1174,7 +1179,8 @@ struct drm_pvr_sync_op {
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_PREVENT_CDM_OVERLAP |                     \
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_SCRATCHBUFFER |                           \
 	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_GET_VIS_RESULTS |                         \
-	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_PARTIAL_RENDER)
+	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_PARTIAL_RENDER |                          \
+	 DRM_PVR_SUBMIT_JOB_FRAG_CMD_DISABLE_PIXELMERGE)
 
 /**
  * DOC: Flags for SUBMIT_JOB ioctl compute command.
