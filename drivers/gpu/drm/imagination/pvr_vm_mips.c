@@ -155,7 +155,7 @@ pvr_vm_mips_map(struct pvr_device *pvr_dev, struct pvr_fw_object *fw_obj)
 	u32 pte_flags;
 	u32 start_pfn;
 	u32 end_pfn;
-	u32 pfn;
+	s32 pfn;
 	int err;
 
 	if (check_add_overflow(start, size - 1, &end))
