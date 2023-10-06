@@ -343,6 +343,8 @@ pvr_gem_object_create(struct pvr_device *pvr_dev, size_t size, u64 flags)
 {
 	struct drm_gem_shmem_object *shmem_obj;
 	struct pvr_gem_object *pvr_obj;
+	struct sg_table *sgt;
+	int err;
 
 	/* Verify @size and @flags before continuing. */
 	if (size == 0 || !pvr_gem_object_flags_validate(flags))
@@ -357,7 +359,16 @@ pvr_gem_object_create(struct pvr_device *pvr_dev, size_t size, u64 flags)
 	pvr_obj = shmem_gem_to_pvr_gem(shmem_obj);
 	pvr_obj->flags = flags;
 
+	sgt = drm_gem_shmem_get_pages_sgt(shmem_obj);
+	if (IS_ERR(sgt)) {
+		err = PTR_ERR(sgt);
+		goto err_shmem_object_free;
+	}
+
 	mutex_init(&pvr_obj->gpuva_lock);
+
+	dma_sync_sgtable_for_device(shmem_obj->base.dev->dev, sgt,
+				    DMA_BIDIRECTIONAL);
 
 	/*
 	 * Do this last because pvr_gem_object_zero() requires a fully
@@ -366,6 +377,11 @@ pvr_gem_object_create(struct pvr_device *pvr_dev, size_t size, u64 flags)
 	pvr_gem_object_zero(pvr_obj);
 
 	return pvr_obj;
+
+err_shmem_object_free:
+	drm_gem_shmem_free(shmem_obj);
+
+	return ERR_PTR(err);
 }
 
 /**
@@ -384,16 +400,12 @@ pvr_gem_get_dma_addr(struct pvr_gem_object *pvr_obj, u32 offset,
 		     dma_addr_t *dma_addr_out)
 {
 	struct drm_gem_shmem_object *shmem_obj = shmem_gem_from_pvr_gem(pvr_obj);
-	struct sg_table *sgt;
 	u32 accumulated_offset = 0;
 	struct scatterlist *sgl;
 	unsigned int sgt_idx;
 
-	sgt = drm_gem_shmem_get_pages_sgt(shmem_obj);
-	if (IS_ERR(sgt))
-		return PTR_ERR(sgt);
-
-	for_each_sgtable_dma_sg(sgt, sgl, sgt_idx) {
+	WARN_ON(!shmem_obj->sgt);
+	for_each_sgtable_dma_sg(shmem_obj->sgt, sgl, sgt_idx) {
 		u32 new_offset = accumulated_offset + sg_dma_len(sgl);
 
 		if (offset >= accumulated_offset && offset < new_offset) {
