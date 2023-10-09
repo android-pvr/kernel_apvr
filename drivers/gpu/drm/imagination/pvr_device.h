@@ -173,6 +173,12 @@ struct pvr_device {
 	u32 stream_musthave_quirks[PVR_STREAM_TYPE_MAX][PVR_STREAM_EXTHDR_TYPE_MAX];
 
 	/**
+	 * @mmu_flush_cache_flags: Records which MMU caches require flushing
+	 * before submitting the next job.
+	 */
+	atomic_t mmu_flush_cache_flags;
+
+	/**
 	 * @ctx_ids: Array of contexts belonging to this device. Array members
 	 *           are of type "struct pvr_context *".
 	 *

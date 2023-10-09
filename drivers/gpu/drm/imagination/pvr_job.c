@@ -7,6 +7,7 @@
 #include "pvr_gem.h"
 #include "pvr_hwrt.h"
 #include "pvr_job.h"
+#include "pvr_mmu.h"
 #include "pvr_power.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_fwif_client.h"
@@ -739,6 +740,14 @@ pvr_submit_jobs(struct pvr_device *pvr_dev, struct pvr_file *pvr_file,
 
 	jobs_alloced = args->jobs.count;
 
+	/*
+	 * Flush MMU if needed - this has been deferred until now to avoid
+	 * overuse of this expensive operation.
+	 */
+	err = pvr_mmu_flush_exec(pvr_dev, false);
+	if (err)
+		goto out_job_data_cleanup;
+
 	drm_exec_init(&exec, DRM_EXEC_INTERRUPTIBLE_WAIT | DRM_EXEC_IGNORE_DUPLICATES);
 
 	xa_init_flags(&signal_array, XA_FLAGS_ALLOC);
@@ -767,6 +776,8 @@ pvr_submit_jobs(struct pvr_device *pvr_dev, struct pvr_file *pvr_file,
 out_exec_fini:
 	drm_exec_fini(&exec);
 	pvr_sync_signal_array_cleanup(&signal_array);
+
+out_job_data_cleanup:
 	pvr_job_data_fini(job_data, jobs_alloced);
 
 out_free:

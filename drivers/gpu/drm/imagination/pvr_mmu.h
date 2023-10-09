@@ -88,7 +88,8 @@ struct sg_table;
 #define PVR_PAGE_TABLE_ADDR_BITS __ffs(PVR_PAGE_TABLE_ADDR_SPACE_SIZE)
 #define PVR_PAGE_TABLE_ADDR_MASK (PVR_PAGE_TABLE_ADDR_SPACE_SIZE - 1)
 
-int pvr_mmu_flush(struct pvr_device *pvr_dev);
+void pvr_mmu_flush_request_all(struct pvr_device *pvr_dev);
+int pvr_mmu_flush_exec(struct pvr_device *pvr_dev, bool wait);
 
 struct pvr_mmu_context *pvr_mmu_context_create(struct pvr_device *pvr_dev);
 void pvr_mmu_context_destroy(struct pvr_mmu_context *ctx);

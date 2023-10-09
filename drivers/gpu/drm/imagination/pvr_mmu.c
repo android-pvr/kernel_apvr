@@ -12,6 +12,7 @@
 #include "pvr_rogue_mmu_defs.h"
 
 #include <drm/drm_drv.h>
+#include <linux/atomic.h>
 #include <linux/bitops.h>
 #include <linux/dma-mapping.h>
 #include <linux/kmemleak.h>
@@ -59,45 +60,90 @@
 	(ROGUE_MMUCTRL_ENTRIES_PT_VALUE >> \
 	 (PVR_DEVICE_PAGE_SHIFT - PVR_SHIFT_FROM_SIZE(SZ_4K)))
 
+enum pvr_mmu_sync_level {
+	PVR_MMU_SYNC_LEVEL_NONE = -1,
+	PVR_MMU_SYNC_LEVEL_0 = 0,
+	PVR_MMU_SYNC_LEVEL_1 = 1,
+	PVR_MMU_SYNC_LEVEL_2 = 2,
+};
+
+#define PVR_MMU_SYNC_LEVEL_0_FLAGS (ROGUE_FWIF_MMUCACHEDATA_FLAGS_PT | \
+				    ROGUE_FWIF_MMUCACHEDATA_FLAGS_INTERRUPT | \
+				    ROGUE_FWIF_MMUCACHEDATA_FLAGS_TLB)
+#define PVR_MMU_SYNC_LEVEL_1_FLAGS (PVR_MMU_SYNC_LEVEL_0_FLAGS | ROGUE_FWIF_MMUCACHEDATA_FLAGS_PD)
+#define PVR_MMU_SYNC_LEVEL_2_FLAGS (PVR_MMU_SYNC_LEVEL_1_FLAGS | ROGUE_FWIF_MMUCACHEDATA_FLAGS_PC)
+
 /**
- * pvr_mmu_flush() - Request flush of all MMU caches.
+ * pvr_mmu_set_flush_flags() - Set MMU cache flush flags for next call to
+ *                             pvr_mmu_flush_exec().
+ * @pvr_dev: Target PowerVR device.
+ * @flags: MMU flush flags. Must be one of %PVR_MMU_SYNC_LEVEL_*_FLAGS.
+ *
+ * This function must be called following any possible change to the MMU page
+ * tables.
+ */
+static void pvr_mmu_set_flush_flags(struct pvr_device *pvr_dev, u32 flags)
+{
+	atomic_fetch_or(flags, &pvr_dev->mmu_flush_cache_flags);
+}
+
+/**
+ * pvr_mmu_flush_request_all() - Request flush of all MMU caches when
+ * subsequently calling pvr_mmu_flush_exec().
  * @pvr_dev: Target PowerVR device.
  *
- * This function must be called following any possible change to the MMU page tables.
+ * This function must be called following any possible change to the MMU page
+ * tables.
+ */
+void pvr_mmu_flush_request_all(struct pvr_device *pvr_dev)
+{
+	pvr_mmu_set_flush_flags(pvr_dev, PVR_MMU_SYNC_LEVEL_2_FLAGS);
+}
+
+/**
+ * pvr_mmu_flush_exec() - Execute a flush of all MMU caches previously
+ * requested.
+ * @pvr_dev: Target PowerVR device.
+ * @wait: Do not return until the flush is completed.
  *
- * As a failure to flush the MMU caches could risk memory corruption, if the flush fails (implying
- * the firmware is not responding) then the GPU device is marked as lost.
+ * This function must be called prior to submitting any new GPU job. The flush
+ * will complete before the jobs are scheduled, so this can be called once after
+ * a series of maps. However, a single unmap should always be immediately
+ * followed by a flush and it should be explicitly waited by setting @wait.
+ *
+ * As a failure to flush the MMU caches could risk memory corruption, if the
+ * flush fails (implying the firmware is not responding) then the GPU device is
+ * marked as lost.
  *
  * Returns:
- *  * 0 on success, or
+ *  * 0 on success when @wait is true, or
+ *  * -%EIO if the device is unavailable, or
  *  * Any error encountered while submitting the flush command via the KCCB.
  */
-int
-pvr_mmu_flush(struct pvr_device *pvr_dev)
+int pvr_mmu_flush_exec(struct pvr_device *pvr_dev, bool wait)
 {
-	struct rogue_fwif_kccb_cmd cmd_mmu_cache;
+	struct rogue_fwif_kccb_cmd cmd_mmu_cache = {};
 	struct rogue_fwif_mmucachedata *cmd_mmu_cache_data =
 		&cmd_mmu_cache.cmd_data.mmu_cache_data;
+	int err = 0;
 	u32 slot;
 	int idx;
-	int err;
 
 	if (!drm_dev_enter(from_pvr_device(pvr_dev), &idx))
 		return -EIO;
 
 	/* Can't flush MMU if the firmware hasn't booted yet. */
-	if (!pvr_dev->fw_dev.booted) {
-		err = 0;
+	if (!pvr_dev->fw_dev.booted)
 		goto err_drm_dev_exit;
-	}
+
+	cmd_mmu_cache_data->cache_flags =
+		atomic_xchg(&pvr_dev->mmu_flush_cache_flags, 0);
+
+	if (!cmd_mmu_cache_data->cache_flags)
+		goto err_drm_dev_exit;
 
 	cmd_mmu_cache.cmd_type = ROGUE_FWIF_KCCB_CMD_MMUCACHE;
-	/* Request a complete MMU flush, across all pagetable levels, TLBs and contexts. */
-	cmd_mmu_cache_data->cache_flags = ROGUE_FWIF_MMUCACHEDATA_FLAGS_PT |
-					  ROGUE_FWIF_MMUCACHEDATA_FLAGS_PD |
-					  ROGUE_FWIF_MMUCACHEDATA_FLAGS_PC |
-					  ROGUE_FWIF_MMUCACHEDATA_FLAGS_TLB |
-					  ROGUE_FWIF_MMUCACHEDATA_FLAGS_INTERRUPT;
+
 	pvr_fw_object_get_fw_addr(pvr_dev->fw_dev.mem.mmucache_sync_obj,
 				  &cmd_mmu_cache_data->mmu_cache_sync_fw_addr);
 	cmd_mmu_cache_data->mmu_cache_sync_update_value = 0;
@@ -116,8 +162,8 @@ pvr_mmu_flush(struct pvr_device *pvr_dev)
 
 err_reset_and_retry:
 	/*
-	 * Flush command failure is most likely the result of a firmware lockup. Hard reset the GPU
-	 * and retry.
+	 * Flush command failure is most likely the result of a firmware lockup. Hard
+	 * reset the GPU and retry.
 	 */
 	err = pvr_power_reset(pvr_dev, true);
 	if (err)
@@ -130,9 +176,11 @@ err_reset_and_retry:
 		goto err_drm_dev_exit;
 	}
 
-	err = pvr_kccb_wait_for_completion(pvr_dev, slot, HZ, NULL);
-	if (err)
-		pvr_device_lost(pvr_dev);
+	if (wait) {
+		err = pvr_kccb_wait_for_completion(pvr_dev, slot, HZ, NULL);
+		if (err)
+			pvr_device_lost(pvr_dev);
+	}
 
 err_drm_dev_exit:
 	drm_dev_exit(idx);
@@ -297,21 +345,24 @@ pvr_mmu_backing_page_fini(struct pvr_mmu_backing_page *page)
  *    make to the backing page in the immediate future.
  */
 static void
-pvr_mmu_backing_page_sync(struct pvr_mmu_backing_page *page)
+pvr_mmu_backing_page_sync(struct pvr_mmu_backing_page *page, u32 flags)
 {
+	struct pvr_device *pvr_dev = page->pvr_dev;
 	struct device *dev;
 
 	/*
 	 * Do nothing if no allocation is present. This may be the case if
 	 * we are unmapping pages.
 	 */
-	if (!page->pvr_dev)
+	if (!pvr_dev)
 		return;
 
-	dev = from_pvr_device(page->pvr_dev)->dev;
+	dev = from_pvr_device(pvr_dev)->dev;
 
 	dma_sync_single_for_device(dev, page->dma_addr,
 				   PVR_MMU_BACKING_PAGE_SIZE, DMA_TO_DEVICE);
+
+	pvr_mmu_set_flush_flags(pvr_dev, flags);
 }
 
 /**
@@ -861,7 +912,7 @@ pvr_page_table_l2_fini(struct pvr_page_table_l2 *table)
 static void
 pvr_page_table_l2_sync(struct pvr_page_table_l2 *table)
 {
-	pvr_mmu_backing_page_sync(&table->backing_page);
+	pvr_mmu_backing_page_sync(&table->backing_page, PVR_MMU_SYNC_LEVEL_2_FLAGS);
 }
 
 /**
@@ -1042,7 +1093,7 @@ pvr_page_table_l1_free(struct pvr_page_table_l1 *table)
 static void
 pvr_page_table_l1_sync(struct pvr_page_table_l1 *table)
 {
-	pvr_mmu_backing_page_sync(&table->backing_page);
+	pvr_mmu_backing_page_sync(&table->backing_page, PVR_MMU_SYNC_LEVEL_1_FLAGS);
 }
 
 /**
@@ -1219,7 +1270,7 @@ pvr_page_table_l0_free(struct pvr_page_table_l0 *table)
 static void
 pvr_page_table_l0_sync(struct pvr_page_table_l0 *table)
 {
-	pvr_mmu_backing_page_sync(&table->backing_page);
+	pvr_mmu_backing_page_sync(&table->backing_page, PVR_MMU_SYNC_LEVEL_0_FLAGS);
 }
 
 /**
@@ -1295,13 +1346,6 @@ struct pvr_mmu_context {
 
 	/** @page_table_l2: The MMU table root. */
 	struct pvr_page_table_l2 page_table_l2;
-};
-
-enum pvr_mmu_sync_level {
-	PVR_MMU_SYNC_LEVEL_NONE = -1,
-	PVR_MMU_SYNC_LEVEL_0 = 0,
-	PVR_MMU_SYNC_LEVEL_1 = 1,
-	PVR_MMU_SYNC_LEVEL_2 = 2,
 };
 
 /**
@@ -2241,8 +2285,9 @@ void pvr_mmu_op_context_destroy(struct pvr_mmu_op_context *op_ctx)
 
 	pvr_mmu_op_context_sync(op_ctx);
 
-	if (flush_caches)
-		WARN_ON(pvr_mmu_flush(op_ctx->mmu_ctx->pvr_dev));
+	/* Unmaps should be flushed immediately. Map flushes can be deferred. */
+	if (flush_caches && !op_ctx->map.sgt)
+		pvr_mmu_flush_exec(op_ctx->mmu_ctx->pvr_dev, true);
 
 	while (op_ctx->map.l0_prealloc_tables) {
 		struct pvr_page_table_l0 *tmp = op_ctx->map.l0_prealloc_tables;

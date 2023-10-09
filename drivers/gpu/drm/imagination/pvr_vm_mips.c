@@ -148,8 +148,8 @@ pvr_vm_mips_map(struct pvr_device *pvr_dev, struct pvr_fw_object *fw_obj)
 	struct pvr_fw_device *fw_dev = &pvr_dev->fw_dev;
 	struct pvr_fw_mips_data *mips_data = fw_dev->processor_data.mips_data;
 	struct pvr_gem_object *pvr_obj = fw_obj->gem;
-	u64 start = fw_obj->fw_mm_node.start;
-	u64 size = fw_obj->fw_mm_node.size;
+	const u64 start = fw_obj->fw_mm_node.start;
+	const u64 size = fw_obj->fw_mm_node.size;
 	u64 end;
 	u32 cache_policy;
 	u32 pte_flags;
@@ -197,7 +197,7 @@ pvr_vm_mips_map(struct pvr_device *pvr_dev, struct pvr_fw_object *fw_obj)
 		WRITE_ONCE(mips_data->pt[pfn], pte);
 	}
 
-	pvr_mmu_flush(pvr_dev);
+	pvr_mmu_flush_request_all(pvr_dev);
 
 	return 0;
 
@@ -205,7 +205,8 @@ err_unmap_pages:
 	for (; pfn >= start_pfn; pfn--)
 		WRITE_ONCE(mips_data->pt[pfn], 0);
 
-	pvr_mmu_flush(pvr_dev);
+	pvr_mmu_flush_request_all(pvr_dev);
+	WARN_ON(pvr_mmu_flush_exec(pvr_dev, true));
 
 	return err;
 }
@@ -220,17 +221,18 @@ pvr_vm_mips_unmap(struct pvr_device *pvr_dev, struct pvr_fw_object *fw_obj)
 {
 	struct pvr_fw_device *fw_dev = &pvr_dev->fw_dev;
 	struct pvr_fw_mips_data *mips_data = fw_dev->processor_data.mips_data;
-	u64 start = fw_obj->fw_mm_node.start;
-	u64 size = fw_obj->fw_mm_node.size;
-	u64 end = start + size;
+	const u64 start = fw_obj->fw_mm_node.start;
+	const u64 size = fw_obj->fw_mm_node.size;
+	const u64 end = start + size;
 
-	u32 start_pfn = (start & fw_dev->fw_heap_info.offset_mask) >>
-			ROGUE_MIPSFW_LOG2_PAGE_SIZE_4K;
-	u32 end_pfn = (end & fw_dev->fw_heap_info.offset_mask) >> ROGUE_MIPSFW_LOG2_PAGE_SIZE_4K;
-	u32 pfn;
+	const u32 start_pfn = (start & fw_dev->fw_heap_info.offset_mask) >>
+			      ROGUE_MIPSFW_LOG2_PAGE_SIZE_4K;
+	const u32 end_pfn = (end & fw_dev->fw_heap_info.offset_mask) >>
+			    ROGUE_MIPSFW_LOG2_PAGE_SIZE_4K;
 
-	for (pfn = start_pfn; pfn < end_pfn; pfn++)
+	for (u32 pfn = start_pfn; pfn < end_pfn; pfn++)
 		WRITE_ONCE(mips_data->pt[pfn], 0);
 
-	pvr_mmu_flush(pvr_dev);
+	pvr_mmu_flush_request_all(pvr_dev);
+	WARN_ON(pvr_mmu_flush_exec(pvr_dev, true));
 }
