@@ -357,8 +357,10 @@ prepare_job_syncs(struct pvr_file *pvr_file,
 			dma_resv_usage_rw(job_data->job->type ==
 					  DRM_PVR_JOB_TYPE_GEOMETRY);
 
+		dma_resv_lock(obj->resv, NULL);
 		err = drm_sched_job_add_resv_dependencies(&job_data->job->base,
 							  obj->resv, usage);
+		dma_resv_unlock(obj->resv);
 		if (err)
 			return err;
 	}
