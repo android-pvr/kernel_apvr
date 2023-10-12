@@ -249,7 +249,7 @@ pvr_vm_gpuva_remap(struct drm_gpuva_op *op, void *op_ctx)
 	u64 va_start = 0, va_range = 0;
 	int err;
 
-	drm_gpuva_op_remap_get_unmap_range(&op->remap, &va_start, &va_range);
+	drm_gpuva_op_remap_to_unmap_range(&op->remap, &va_start, &va_range);
 	err = pvr_mmu_unmap(ctx->mmu_op_ctx, va_start, va_range);
 	if (err)
 		return err;
