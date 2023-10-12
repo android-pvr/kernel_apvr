@@ -98,8 +98,8 @@ void pvr_device_info_set_quirks(struct pvr_device *pvr_dev, const u64 *quirks, u
 /**
  * pvr_device_info_set_enhancements() - Set device enhancements from device information in firmware
  * @pvr_dev: Device pointer.
- * @quirks: Pointer to enhancements mask in device information.
- * @quirks_size: Size of enhancements mask, in u64s.
+ * @enhancements: Pointer to enhancements mask in device information.
+ * @enhancements_size: Size of enhancements mask, in u64s.
  */
 void pvr_device_info_set_enhancements(struct pvr_device *pvr_dev, const u64 *enhancements,
 				      u32 enhancements_size)
