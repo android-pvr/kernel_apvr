@@ -1393,8 +1393,8 @@ struct pvr_mmu_op_context {
 	} unmap;
 
 	/**
-	 * @curr_page - A reference to a single physical page as indexed by
-	 * the page table structure.
+	 * @curr_page: A reference to a single physical page as indexed by the
+	 * page table structure.
 	 */
 	struct pvr_page_table_ptr curr_page;
 
@@ -1803,7 +1803,7 @@ void pvr_mmu_context_destroy(struct pvr_mmu_context *ctx)
 /**
  * pvr_mmu_get_root_table_dma_addr() - Get the DMA address of the root of the
  * page table structure behind a VM context.
- * @root: Target MMU page table root.
+ * @ctx: Target MMU context.
  */
 dma_addr_t pvr_mmu_get_root_table_dma_addr(struct pvr_mmu_context *ctx)
 {
@@ -2214,7 +2214,6 @@ pvr_page_create(struct pvr_mmu_op_context *op_ctx, dma_addr_t dma_addr,
  * pvr_page_destroy() - Destroy a device page after removing it from its
  * parent level 0 page table.
  * @op_ctx: Target MMU op context.
- * @ptr: Page table pointer to the device-virtual address of the target page.
  */
 static void
 pvr_page_destroy(struct pvr_mmu_op_context *op_ctx)
