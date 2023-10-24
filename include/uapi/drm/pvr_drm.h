@@ -336,10 +336,10 @@ struct drm_pvr_dev_query_heap_info {
  */
 enum drm_pvr_static_data_area_usage {
 	/**
-	 * @DRM_PVR_STATIC_DATA_AREA_EOT: End of Tile USC program.
+	 * @DRM_PVR_STATIC_DATA_AREA_EOT: End of Tile PDS program code segment.
 	 *
-	 * The End of Tile task runs at completion of a tile, and is responsible for emitting the
-	 * tile to the Pixel Back End.
+	 * The End of Tile PDS task runs at completion of a tile during a fragment job, and is
+	 * responsible for emitting the tile to the Pixel Back End.
 	 */
 	DRM_PVR_STATIC_DATA_AREA_EOT = 0,
 
