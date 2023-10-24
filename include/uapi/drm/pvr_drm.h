@@ -288,19 +288,6 @@ enum drm_pvr_heap_id {
 };
 
 /**
- * DOC: Flags for DRM_PVR_DEV_QUERY_HEAP_INFO_GET.
- *
- * .. c:macro:: DRM_PVR_HEAP_FLAG_STATIC_CARVEOUT_AT_END
- *
- *    The static data area is at the end of the heap memory area, rather than
- *    at the beginning.
- *    The base address will be:
- *        drm_pvr_heap::base +
- *            (drm_pvr_heap::size - drm_pvr_heap::static_data_carveout_size)
- */
-#define DRM_PVR_HEAP_FLAG_STATIC_CARVEOUT_AT_END _BITUL(0)
-
-/**
  * struct drm_pvr_heap - Container holding information about a single heap.
  *
  * This will always be fetched as an array.
@@ -309,12 +296,10 @@ struct drm_pvr_heap {
 	/** @base: Base address of heap. */
 	__u64 base;
 
-	/**
-	 * @size: Size of heap, in bytes. Will be 0 if the heap is not present.
-	 */
+	/** @size: Size of heap, in bytes. Will be 0 if the heap is not present. */
 	__u64 size;
 
-	/** @flags: Flags for this heap. See &enum drm_pvr_heap_flags. */
+	/** @flags: Flags for this heap. Currently always 0. */
 	__u32 flags;
 
 	/** @page_size_log2: Log2 of page size. */
@@ -421,10 +406,7 @@ struct drm_pvr_static_data_area {
 	/** @size: Size of static data area. Not present if set to zero. */
 	__u32 size;
 
-	/**
-	 * @offset: Offset of static data area from start of static data
-	 * carveout.
-	 */
+	/** @offset: Offset of static data area from start of heap. */
 	__u64 offset;
 };
 

@@ -669,12 +669,7 @@ out:
 	return err;
 }
 
-/*
- * Static data areas are determined by firmware.
- *
- * When adding a new static data area you will also need to update the reserved_size field for the
- * heap in pvr_heaps[].
- */
+/* Static data areas are determined by firmware. */
 static const struct drm_pvr_static_data_area static_data_areas[] = {
 	{
 		.area_usage = DRM_PVR_STATIC_DATA_AREA_FENCE,
