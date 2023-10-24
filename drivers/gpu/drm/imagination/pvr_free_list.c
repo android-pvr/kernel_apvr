@@ -79,8 +79,8 @@ free_list_create_kernel_structure(struct pvr_file *pvr_file,
 		goto err_put_vm_context;
 	}
 
-	if ((free_list_obj->flags & DRM_PVR_BO_CPU_ALLOW_USERSPACE_ACCESS) ||
-	    !(free_list_obj->flags & DRM_PVR_BO_DEVICE_PM_FW_PROTECT) ||
+	if ((free_list_obj->flags & DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS) ||
+	    !(free_list_obj->flags & DRM_PVR_BO_PM_FW_PROTECT) ||
 	    free_list_size < (args->max_num_pages * FREE_LIST_ENTRY_SIZE)) {
 		err = -EINVAL;
 		goto err_put_free_list_obj;

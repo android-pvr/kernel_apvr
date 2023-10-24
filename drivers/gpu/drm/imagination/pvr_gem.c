@@ -35,7 +35,7 @@ static int pvr_gem_mmap(struct drm_gem_object *gem_obj, struct vm_area_struct *v
 	struct pvr_gem_object *pvr_obj = gem_to_pvr_gem(gem_obj);
 	struct drm_gem_shmem_object *shmem_obj = shmem_gem_from_pvr_gem(pvr_obj);
 
-	if (!(pvr_obj->flags & DRM_PVR_BO_CPU_ALLOW_USERSPACE_ACCESS))
+	if (!(pvr_obj->flags & DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS))
 		return -EINVAL;
 
 	return drm_gem_shmem_mmap(shmem_obj, vma);
@@ -75,8 +75,8 @@ pvr_gem_object_flags_validate(u64 flags)
 		 * flags allowing each of these respective features are never
 		 * specified together.
 		 */
-		(DRM_PVR_BO_DEVICE_PM_FW_PROTECT |
-		 DRM_PVR_BO_CPU_ALLOW_USERSPACE_ACCESS),
+		(DRM_PVR_BO_PM_FW_PROTECT |
+		 DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS),
 	};
 
 	int i;

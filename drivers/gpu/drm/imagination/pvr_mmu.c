@@ -2544,8 +2544,8 @@ int pvr_mmu_map(struct pvr_mmu_op_context *op_ctx, u64 size, u64 flags,
 	memcpy(&ptr_copy, &op_ctx->curr_page, sizeof(ptr_copy));
 
 	flags_raw = pvr_page_flags_raw_create(false, false,
-					      flags & DRM_PVR_BO_DEVICE_BYPASS_CACHE,
-					      flags & DRM_PVR_BO_DEVICE_PM_FW_PROTECT);
+					      flags & DRM_PVR_BO_BYPASS_DEVICE_CACHE,
+					      flags & DRM_PVR_BO_PM_FW_PROTECT);
 
 	/* Map scatter gather table */
 	for_each_sgtable_dma_sg(op_ctx->map.sgt, sgl, count) {

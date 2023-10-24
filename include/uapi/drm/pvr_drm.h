@@ -533,43 +533,31 @@ struct drm_pvr_ioctl_dev_query_args {
 /**
  * DOC: Flags for CREATE_BO
  *
- * The &struct drm_pvr_ioctl_create_bo_args.flags field is 64 bits wide and consists
- * of three groups of flags: creation, device mapping and CPU mapping.
- *
- * We use "device" to refer to the GPU here because of the ambiguity between
- * CPU and GPU in some fonts.
- *
- * Creation options
- *    These use the prefix ``DRM_PVR_BO_CREATE_``.
+ * We use "device" to refer to the GPU here because of the ambiguity between CPU and GPU in some
+ * fonts.
  *
  * Device mapping options
- *    These use the prefix ``DRM_PVR_BO_DEVICE_``.
- *
- *    :BYPASS_CACHE: Specify that device accesses to this memory will bypass the cache.
- *       This is used for buffers that will either be regularly updated by the CPU (eg
- *       free lists) or will be accessed only once and therefore isn't worth caching (eg
- *       partial render buffers).
- *       By default, the device flushes its memory caches after every job, so this
- *       is not normally required for coherency.
- *    :PM_FW_PROTECT: Specify that only the Parameter Manager (PM) and/or
- *       firmware processor should be allowed to access this memory when mapped
- *       to the device. It is not valid to specify this flag with
- *       CPU_ALLOW_USERSPACE_ACCESS.
+ *    :DRM_PVR_BO_BYPASS_DEVICE_CACHE: Specify that device accesses to this memory will bypass the
+ *       cache. This is used for buffers that will either be regularly updated by the CPU (eg free
+ *       lists) or will be accessed only once and therefore isn't worth caching (eg partial render
+ *       buffers).
+ *       By default, the device flushes its memory caches after every job, so this is not normally
+ *       required for coherency.
+ *    :DRM_PVR_BO_PM_FW_PROTECT: Specify that only the Parameter Manager (PM) and/or firmware
+ *       processor should be allowed to access this memory when mapped to the device. It is not
+ *       valid to specify this flag with DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS.
  *
  * CPU mapping options
- *    These use the prefix ``DRM_PVR_BO_CPU_``.
- *
- *    :ALLOW_USERSPACE_ACCESS: Allow userspace to map and access the contents
- *       of this memory. It is not valid to specify this flag with
- *       DEVICE_PM_FW_PROTECT.
+ *    :DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS: Allow userspace to map and access the contents of this
+ *       memory. It is not valid to specify this flag with DRM_PVR_BO_PM_FW_PROTECT.
  */
-#define DRM_PVR_BO_DEVICE_BYPASS_CACHE _BITULL(0)
-#define DRM_PVR_BO_DEVICE_PM_FW_PROTECT _BITULL(1)
-#define DRM_PVR_BO_CPU_ALLOW_USERSPACE_ACCESS _BITULL(2)
+#define DRM_PVR_BO_BYPASS_DEVICE_CACHE _BITULL(0)
+#define DRM_PVR_BO_PM_FW_PROTECT _BITULL(1)
+#define DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS _BITULL(2)
 /* Bits 3..63 are reserved. */
 
-#define DRM_PVR_BO_FLAGS_MASK (DRM_PVR_BO_DEVICE_BYPASS_CACHE | DRM_PVR_BO_DEVICE_PM_FW_PROTECT | \
-			       DRM_PVR_BO_CPU_ALLOW_USERSPACE_ACCESS)
+#define DRM_PVR_BO_FLAGS_MASK (DRM_PVR_BO_BYPASS_DEVICE_CACHE | DRM_PVR_BO_PM_FW_PROTECT | \
+			       DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS)
 
 /**
  * struct drm_pvr_ioctl_create_bo_args - Arguments for %DRM_IOCTL_PVR_CREATE_BO

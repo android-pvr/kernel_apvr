@@ -1256,8 +1256,8 @@ pvr_fw_object_create_and_map_common(struct pvr_device *pvr_dev, size_t size,
 	void *cpu_ptr;
 	int err;
 
-	/* %DRM_PVR_BO_DEVICE_PM_FW_PROTECT is implicit for FW objects. */
-	flags |= DRM_PVR_BO_DEVICE_PM_FW_PROTECT;
+	/* %DRM_PVR_BO_PM_FW_PROTECT is implicit for FW objects. */
+	flags |= DRM_PVR_BO_PM_FW_PROTECT;
 
 	fw_obj = kzalloc(sizeof(*fw_obj), GFP_KERNEL);
 	if (!fw_obj)

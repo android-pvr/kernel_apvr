@@ -43,29 +43,13 @@ struct pvr_file;
  * We use "reserved" to refer to bits defined here and not exposed in the UAPI.
  * Bits not defined anywhere are "undefined".
  *
- * Creation options
- *    These use the prefix PVR_BO_CREATE_.
- *
- *    *There are currently no kernel-only flags in this group.*
- *
- * Device mapping options
- *    These use the prefix PVR_BO_DEVICE_.
- *
- *    *There are currently no kernel-only flags in this group.*
- *
  * CPU mapping options
- *    These use the prefix PVR_BO_CPU_.
- *
- *    :CACHED: By default, all GEM objects are mapped write-combined on the
- *       CPU. Set this flag to override this behaviour and map the object
- *       cached.
+ *    :PVR_BO_CPU_CACHED: By default, all GEM objects are mapped write-combined on the CPU. Set this
+ *       flag to override this behaviour and map the object cached.
  *
  * Firmware options
- *    These use the prefix PVR_BO_FW_.
- *
- *    :NO_CLEAR_ON_RESET: By default, all FW objects are cleared and
- *       reinitialised on hard reset. Set this flag to override this behaviour
- *       and preserve buffer contents on reset.
+ *    :PVR_BO_FW_NO_CLEAR_ON_RESET: By default, all FW objects are cleared and reinitialised on hard
+ *       reset. Set this flag to override this behaviour and preserve buffer contents on reset.
  */
 #define PVR_BO_CPU_CACHED BIT_ULL(63)
 
@@ -89,7 +73,7 @@ struct pvr_file;
  * The only variation is in caching on the device.
  */
 #define PVR_BO_FW_FLAGS_DEVICE_CACHED (ULL(0))
-#define PVR_BO_FW_FLAGS_DEVICE_UNCACHED DRM_PVR_BO_DEVICE_BYPASS_CACHE
+#define PVR_BO_FW_FLAGS_DEVICE_UNCACHED DRM_PVR_BO_BYPASS_DEVICE_CACHE
 
 /**
  * struct pvr_gem_object - powervr-specific wrapper for &struct drm_gem_object
