@@ -955,6 +955,9 @@ struct drm_pvr_create_hwrt_rt_data_args {
 	__u64 region_header_dev_addr;
 };
 
+#define PVR_DRM_HWRT_FREE_LIST_LOCAL 0
+#define PVR_DRM_HWRT_FREE_LIST_GLOBAL 1U
+
 /**
  * struct drm_pvr_ioctl_create_hwrt_dataset_args - Arguments for
  * %DRM_IOCTL_PVR_CREATE_HWRT_DATASET
@@ -963,14 +966,20 @@ struct drm_pvr_ioctl_create_hwrt_dataset_args {
 	/** @geom_data_args: [IN] Geometry data arguments. */
 	struct drm_pvr_create_hwrt_geom_data_args geom_data_args;
 
-	/** @rt_data_args: [IN] Array of render target arguments. */
+	/**
+	 * @rt_data_args: [IN] Array of render target arguments.
+	 *
+	 * Each entry in this array represents a render target in a double buffered
+	 * setup.
+	 */
 	struct drm_pvr_create_hwrt_rt_data_args rt_data_args[2];
 
 	/**
 	 * @free_list_handles: [IN] Array of free list handles.
 	 *
-	 * free_list_handles[0] must have initial size of at least that reported
-	 * by &drm_pvr_dev_query_runtime_info.free_list_min_pages.
+	 * free_list_handles[PVR_DRM_HWRT_FREE_LIST_LOCAL] must have initial
+	 * size of at least that reported by
+	 * &drm_pvr_dev_query_runtime_info.free_list_min_pages.
 	 */
 	__u32 free_list_handles[2];
 
