@@ -546,9 +546,8 @@ struct drm_pvr_ioctl_dev_query_args {
  */
 struct drm_pvr_ioctl_create_bo_args {
 	/**
-	 * @size: [IN/OUT] Unaligned size of buffer object to create. On
-	 * return, this will be populated with the actual aligned size of the
-	 * new buffer.
+	 * @size: [IN] Size of buffer object to create. This must be page size
+	 * aligned.
 	 */
 	__u64 size;
 

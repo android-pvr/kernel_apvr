@@ -9,6 +9,7 @@
 #include "pvr_gem.h"
 #include "pvr_hwrt.h"
 #include "pvr_job.h"
+#include "pvr_mmu.h"
 #include "pvr_power.h"
 #include "pvr_rogue_defs.h"
 #include "pvr_rogue_fwif_client.h"
@@ -77,7 +78,6 @@ pvr_ioctl_create_bo(struct drm_device *drm_dev, void *raw_args,
 
 	struct pvr_gem_object *pvr_obj;
 	size_t sanitized_size;
-	size_t real_size;
 
 	int idx;
 	int err;
@@ -99,7 +99,8 @@ pvr_ioctl_create_bo(struct drm_device *drm_dev, void *raw_args,
 	 * We also disallow zero-sized allocations, and reserved (kernel-only)
 	 * flags.
 	 */
-	if (args->size > SIZE_MAX || args->size == 0 || args->flags & ~DRM_PVR_BO_FLAGS_MASK) {
+	if (args->size > SIZE_MAX || args->size == 0 || args->flags &
+	    ~DRM_PVR_BO_FLAGS_MASK || args->size & (PVR_DEVICE_PAGE_SIZE - 1)) {
 		err = -EINVAL;
 		goto err_drm_dev_exit;
 	}
@@ -116,23 +117,10 @@ pvr_ioctl_create_bo(struct drm_device *drm_dev, void *raw_args,
 		goto err_drm_dev_exit;
 	}
 
-	/*
-	 * Store the actual size of the created buffer object. We can't fetch
-	 * this after this point because we will no longer have a reference to
-	 * &pvr_obj.
-	 */
-	real_size = pvr_gem_object_size(pvr_obj);
-
 	/* This function will not modify &args->handle unless it succeeds. */
 	err = pvr_gem_object_into_handle(pvr_obj, pvr_file, &args->handle);
 	if (err)
 		goto err_destroy_obj;
-
-	/*
-	 * Now write the real size back to the args struct, after no further
-	 * errors can occur.
-	 */
-	args->size = real_size;
 
 	drm_dev_exit(idx);
 
