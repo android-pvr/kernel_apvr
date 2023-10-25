@@ -192,10 +192,12 @@ OFFSET_CHECK(struct rogue_fwif_fwcommoncontext, geom_oom_disabled, 148);
 SIZE_CHECK(struct rogue_fwif_fwcommoncontext, 152);
 
 OFFSET_CHECK(struct rogue_fwif_ccb_ctl, write_offset, 0);
-OFFSET_CHECK(struct rogue_fwif_ccb_ctl, read_offset, 4);
-OFFSET_CHECK(struct rogue_fwif_ccb_ctl, wrap_mask, 8);
-OFFSET_CHECK(struct rogue_fwif_ccb_ctl, cmd_size, 12);
-SIZE_CHECK(struct rogue_fwif_ccb_ctl, 16);
+OFFSET_CHECK(struct rogue_fwif_ccb_ctl, padding, 4);
+OFFSET_CHECK(struct rogue_fwif_ccb_ctl, read_offset, 128);
+OFFSET_CHECK(struct rogue_fwif_ccb_ctl, wrap_mask, 132);
+OFFSET_CHECK(struct rogue_fwif_ccb_ctl, cmd_size, 136);
+OFFSET_CHECK(struct rogue_fwif_ccb_ctl, padding2, 140);
+SIZE_CHECK(struct rogue_fwif_ccb_ctl, 144);
 
 OFFSET_CHECK(struct rogue_fwif_kccb_cmd_kick_data, context_fw_addr, 0);
 OFFSET_CHECK(struct rogue_fwif_kccb_cmd_kick_data, client_woff_update, 4);

@@ -828,12 +828,15 @@ struct rogue_fwif_fwtransfercontext {
 struct rogue_fwif_ccb_ctl {
 	/* write offset into array of commands (MUST be aligned to 16 bytes!) */
 	u32 write_offset;
+	/* Padding to ensure read and write offsets are in separate cache lines. */
+	u8 padding[128 - sizeof(u32)];
 	/* read offset into array of commands */
 	u32 read_offset;
 	/* Offset wrapping mask (Total capacity of the CCB - 1) */
 	u32 wrap_mask;
 	/* size of each command in bytes */
 	u32 cmd_size;
+	u32 padding2;
 } __aligned(8);
 
 /* Kernel CCB command structure for ROGUE */
