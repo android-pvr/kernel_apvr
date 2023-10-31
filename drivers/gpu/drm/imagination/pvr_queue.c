@@ -1152,6 +1152,9 @@ static void init_fw_context(struct pvr_queue *queue, void *fw_ctx_map)
  */
 static int pvr_queue_cleanup_fw_context(struct pvr_queue *queue)
 {
+	if (!queue->ctx->fw_obj)
+		return 0;
+
 	return pvr_fw_structure_cleanup(queue->ctx->pvr_dev,
 					ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,
 					queue->ctx->fw_obj, queue->ctx_offset);
